@@ -1,7 +1,7 @@
 oo7-parity
 =========
 
-A small library to provide `Bond`-related functionality for the Parity
+A small library to provide [`Bond`](https://github.com/ethcore/oo7#oo7)-related functionality for the Parity
 Ethereum library.
 
 Provides two additional `Bond`s: `Transaction` which is constructed with the
@@ -21,27 +21,27 @@ call it, the `parity` API object must be passed.
 ## Installation
 
 ```sh
-  npm install oo7-parity --save
+npm install oo7-parity --save
 ```
 
 ## Usage
 
 ```javascript
-  var oo7parity = require('oo7-parity'),
-      setupBonds = oo7parity.setupBonds,
-	  formatBlockNumber = oo7parity.formatBlockNumber;
+var oo7parity = require('oo7-parity'),
+  setupBonds = oo7parity.setupBonds,
+  formatBlockNumber = oo7parity.formatBlockNumber;
 
-  // We assume parity has been polluted into the global namespace.
-  parity.bonds = setupBonds(parity.api);
+// We assume parity has been polluted into the global namespace.
+parity.bonds = setupBonds(parity.api);
 
-  // Prints a nicely formatted block number each time there's a new block.
-  parity.bonds.blockNumber.map(formatBlockNumber).subscribe(console.log);
+// Prints a nicely formatted block number each time there's a new block.
+parity.bonds.blockNumber.map(formatBlockNumber).subscribe(console.log);
 ```
 
 ## Tests
 
 ```sh
-  npm test
+npm test
 ```
 
 ## Contributing
