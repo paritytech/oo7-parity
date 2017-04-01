@@ -130,7 +130,8 @@ export function setupBonds(_api = parity.api) {
 					gasPrice: tx.gasPrice || bonds.gasPrice,
 					data: tx.data
 				});
-				new ReactivePromise([from, gasPrice, gas], [], ([from, gasPrice, gas]) => {
+
+				this.internal = new ReactivePromise([from, gasPrice, gas], [], ([from, gasPrice, gas]) => {
 					console.log(`Finally posting ${JSON.stringify(tx)} with gas: ${gas}, gasPrice: ${gasPrice}, from: ${from}`);
 					tx.gas = gas;
 					tx.gasPrice = gasPrice;
@@ -150,8 +151,12 @@ export function setupBonds(_api = parity.api) {
 						.catch(error => {
 							progress({failed: error});
 						});
-				});
+				}).use();
 			});
+		}
+		finalise () {
+			this.internal.drop();
+			ReactivePromise.finalise(this);
 		}
 	}
 
@@ -225,6 +230,7 @@ export function setupBonds(_api = parity.api) {
 	bonds.coinbase = new TransformBond(api.eth.coinbase, [], [bonds.time]);
 	bonds.accounts = new TransformBond(a => a.map(api.util.toChecksumAddress), [new TransformBond(api.eth.accounts, [], [bonds.time])]).subscriptable();
 	bonds.defaultAccount = bonds.accounts[0];	// TODO: make this use its subscription
+	bonds.me = bonds.accounts[0];
 
 	bonds.balance = (x => new TransformBond(api.eth.getBalance, [x], [bonds.blockNumber]));
 	bonds.code = (x => new TransformBond(api.eth.getCode, [x], [bonds.blockNumber]));
