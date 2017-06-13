@@ -1,6 +1,7 @@
 import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from 'oo7';
 import BigNumber from 'bignumber.js';
-const Parity = require('@parity/parity.js');
+// For dev-only (use local version not npm)
+const Parity = window.parity; // require('@parity/parity.js');
 
 import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
 	BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } from './abis.js';
@@ -14,7 +15,7 @@ function defaultTransport() {
 	var transport;
 
 	// Check to see if there's already a parity object injected in window.
-	if (window && window.parity && window.parity.api.transport._url) {
+	if (window && window.parity && window.parity.api.transport._url && window.location.protocol.match('^https?:$')) {
 		transport = new Parity.Api.Transport.Http(
 			window.parity.api.transport._url[0] === '/'
 				? window.location.protocol + '//' + window.location.host + window.parity.api.transport._url
@@ -32,7 +33,30 @@ function defaultTransport() {
 	return transport;
 }
 
-export function Bonds(transport = defaultTransport()) {
+// Pubsub transport
+function wsTransport(){
+	var transport;
+
+	// Check to see if there's already a parity object injected in window.
+	if (window && window.parity && window.parity.api.transport._url && window.location.protocol.match('^wss?:$')) {
+		transport = new Parity.Api.Transport.Ws(
+			window.parity.api.transport._url[0] === '/'
+				? window.location.protocol + '//' + window.location.host + window.parity.api.transport._url
+			: window.parity.api.transport._url.contains('://')
+				? window.parity.api.transport._url
+				: window.location.href + window.parity.api.transport._url
+		);
+	}
+
+	// Fallback to localhost:8546
+	if (!transport){
+		transport = new Parity.Api.Transport.Ws('ws://localhost:8546');
+	}
+
+	return transport;
+}
+
+export function Bonds(transport = wsTransport()) {
 	return createBonds({ api: new Parity.Api(transport) });
 }
 
@@ -67,20 +91,24 @@ function createBonds(options) {
 
 	// TODO: Use more generic means to check on number, ideally push notification.
 	class SubscriptionBond extends Bond {
-		constructor(rpc) {
+		constructor(rpc, api = 'parity_subscribe') {
 			super();
+			this.api = api;
 			this.rpc = rpc;
 		}
-		initialise () {
-			api().subscribe(this.rpc, (_, n) => this.trigger(n))
-				.then(id => this.subscription = id);
+		initialise (options) {
+			options
+				? api().provider._addListener(this.api, this.rpc, (n) => this.trigger(n), options)
+											.then(id => this.subscription = id)
+				: api().provider._addListener(this.api, this.rpc, (n) => this.trigger(n))
+											.then(id => this.subscription = id);
 		}
 		finalise () {
-			api().unsubscribe(this.subscription);
+			api().provider._removeListener('parity_unsubscribe', this.subscription);
 		}
 		map (f) {
-	        return new TransformBond(f, [this]);
-	    }
+					return new TransformBond(f, [this]);
+			}
 		sub (name) {
 			return new TransformBond((r, n) => r[n], [this, name]);
 		}
@@ -189,13 +217,14 @@ function createBonds(options) {
 
     bonds.time = new TimeBond;
 	// TODO: rename `height`
-	bonds.blockNumber = new TransformBond(() => api().eth.blockNumber().then(_=>+_), [], [bonds.time]);
-//	bonds.blockNumber = new TransformBond(_=>+_, [new SubscriptionBond('eth_blockNumber')]);
-//	bonds.accounts = new SubscriptionBond('eth_accounts').subscriptable();
-//	bonds.accountsInfo = new SubscriptionBond('parity_accountsInfo').subscriptable();
-//	bonds.defaultAccount = new SubscriptionBond('parity_defaultAccount').subscriptable();
-//	bonds.allAccountsInfo = new SubscriptionBond('parity_allAccountsInfo');
-//	bonds.requestsToConfirm = new SubscriptionBond('signer_requestsToConfirm');
+	//bonds.blockNumber = new TransformBond(() => api().eth.blockNumber().then(_=>+_), [], [bonds.time]);
+	bonds.blockNumber = new TransformBond(_=>+_, [new SubscriptionBond('eth_blockNumber')]);
+	bonds.accounts = new SubscriptionBond('eth_accounts').subscriptable();
+	bonds.accountsInfo = new SubscriptionBond('parity_accountsInfo').subscriptable();
+	bonds.defaultAccount = new SubscriptionBond('parity_defaultAccount').subscriptable();
+	bonds.allAccountsInfo = new SubscriptionBond('eth_accounts');
+	//bonds.allAccountsInfo = new SubscriptionBond('parity_allAccountsInfo');
+	//bonds.requestsToConfirm = new SubscriptionBond('signer_requestsToConfirm');
 
 	Function.__proto__.bond = function(...args) { return new TransformBond(this, args); };
 	Function.__proto__.unlatchedBond = function(...args) { return new TransformBond(this, args, [], false, undefined); };
@@ -241,8 +270,8 @@ function createBonds(options) {
 	bonds.block = bonds.blockByNumber(bonds.blockNumber);	// TODO: DEPRECATE AND REMOVE
 	bonds.head = new TransformBond(() => api().eth.getBlockByNumber('latest'), [], [onHeadChanged]).subscriptable();// TODO: chain reorgs
 	bonds.author = new TransformBond(() => api().eth.coinbase(), [], [onAccountsChanged]);
-	bonds.accounts = new TransformBond(a => a.map(util.toChecksumAddress), [new TransformBond(() => api().eth.accounts(), [], [onAccountsChanged])]).subscriptable();
-	bonds.defaultAccount = bonds.accounts[0];	// TODO: make this use its subscription
+	//bonds.accounts = new TransformBond(a => a.map(util.toChecksumAddress), [new TransformBond(() => api().eth.accounts(), [], [onAccountsChanged])]).subscriptable();
+	//bonds.defaultAccount = bonds.accounts[0];	// TODO: make this use its subscription
 	bonds.me = bonds.accounts[0];
 	bonds.post = tx => new Transaction(tx);
 	bonds.sign = (message, from = bonds.me) => new Signature(message, from);
@@ -295,7 +324,7 @@ function createBonds(options) {
 	// parity_
 	bonds.hashContent = u => new TransformBond(x => api().parity.hashContent(x), [u], [], false);
 	bonds.gasPriceHistogram = new TransformBond(() => api().parity.gasPriceHistogram(), [], [onHeadChanged]).subscriptable();
-	bonds.accountsInfo = new TransformBond(() => api().parity.accountsInfo(), [], [onAccountsChanged]).subscriptable(2);
+	//bonds.accountsInfo = new TransformBond(() => api().parity.accountsInfo(), [], [onAccountsChanged]).subscriptable(2);
 	bonds.hardwareAccountsInfo = new TransformBond(() => api().parity.hardwareAccountsInfo(), [], [onHardwareAccountsChanged]).subscriptable(2);
 	bonds.mode = new TransformBond(() => api().parity.mode(), [], [bonds.blockNumber]);
 
