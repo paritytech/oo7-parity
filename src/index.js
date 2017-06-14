@@ -1,7 +1,8 @@
 import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from 'oo7';
 import BigNumber from 'bignumber.js';
 // For dev-only (use local version not npm)
-const Parity = window.parity; // require('@parity/parity.js');
+//const Parity = window.parity;
+require('@parity/parity.js');
 
 import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
 	BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } from './abis.js';
@@ -98,13 +99,13 @@ function createBonds(options) {
 		}
 		initialise (options) {
 			options
-				? api().provider._addListener(this.api, this.rpc, (n) => this.trigger(n), options)
+				? api().provider.addListener(this.api, this.rpc, (_,n) => this.trigger(n), options)
 											.then(id => this.subscription = id)
-				: api().provider._addListener(this.api, this.rpc, (n) => this.trigger(n))
+				: api().provider.addListener(this.api, this.rpc, (_,n) => this.trigger(n))
 											.then(id => this.subscription = id);
 		}
 		finalise () {
-			api().provider._removeListener('parity_unsubscribe', this.subscription);
+			api().provider.removeListener('parity_unsubscribe', this.subscription);
 		}
 		map (f) {
 					return new TransformBond(f, [this]);
