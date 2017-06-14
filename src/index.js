@@ -221,9 +221,13 @@ function createBonds(options) {
 	//bonds.blockNumber = new TransformBond(() => api().eth.blockNumber().then(_=>+_), [], [bonds.time]);
 	bonds.blockNumber = new TransformBond(_=>+_, [new SubscriptionBond('eth_blockNumber')]);
 	bonds.accounts = new SubscriptionBond('eth_accounts').subscriptable();
+	bonds.hardwareAccountsInfo = new SubscriptionBond('parity_hardwareAccountsInfo').subscriptable();
 	bonds.accountsInfo = new SubscriptionBond('parity_accountsInfo').subscriptable();
 	bonds.defaultAccount = new SubscriptionBond('parity_defaultAccount').subscriptable();
 	bonds.allAccountsInfo = new SubscriptionBond('eth_accounts');
+	bonds.netPeers = new SubscriptionBond('parity_netPeers').subscriptable();
+	bonds.pendingTransactions = new SubscriptionBond('parity_pendingTransactions').subscriptable();
+	bonds.unsignedTransactionCount = new SubscriptionBond('parity_unsignedTransactionsCount').subscriptable();
 	//bonds.allAccountsInfo = new SubscriptionBond('parity_allAccountsInfo');
 	//bonds.requestsToConfirm = new SubscriptionBond('signer_requestsToConfirm');
 
@@ -248,15 +252,15 @@ function createBonds(options) {
 
 	function isNumber(n) { return typeof(n) === 'number' || (typeof(n) === 'string' && n.match(/^[0-9]+$/)); }
 
-	let onAccountsChanged = bonds.time; // TODO: more accurate notification
-	let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
-	let onHeadChanged = bonds.blockNumber;	// TODO: more accurate notification
+	let onAccountsChanged = bonds.accounts;
+	let onHardwareAccountsChanged = bonds.hardwareAccountsInfo;
+	let onHeadChanged = bonds.blockNumber;
 //	let onReorg = undefined;	// TODO make more accurate.
 	let onSyncingChanged = bonds.time;
 	let onAuthoringDetailsChanged = bonds.time;
-	let onPeerNetChanged = bonds.time; // TODO: more accurate notification
-	let onPendingChanged = bonds.time; // TODO: more accurate notification
-	let onUnsignedChanged = bonds.time; // TODO: more accurate notification
+	let onPeerNetChanged = bonds.netPeers;
+	let onPendingChanged = bonds.pendingTransactions;
+	let onUnsignedChanged = bonds.unsignedTransactionCount;
 	let onAutoUpdateChanged = bonds.blockNumber;
 
 	// eth_
