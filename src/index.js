@@ -12,7 +12,7 @@ export function setupBonds(_api = parity.api) {
 	return createBonds({ api: _api });
 }
 
-function defaultTransport() {
+function httpTransport() {
 	var transport;
 
 	// Check to see if there's already a parity object injected in window.
@@ -34,8 +34,8 @@ function defaultTransport() {
 	return transport;
 }
 
-// Pubsub transport
-function wsTransport(){
+// Pubsub websocket transport
+function defaultTransport(){
 	var transport;
 
 	// Check to see if there's already a parity object injected in window.
@@ -561,8 +561,7 @@ function createBonds(options) {
 }
 
 export var options = { api: new Parity.Api(defaultTransport()) };
-// export const bonds = createBonds(options);
-export const bonds = createBonds({ api: new Parity.Api(wsTransport())});
+export const bonds = createBonds(options);
 
 export const asciiToHex = Parity.Api.util.asciiToHex;
 export const bytesToHex = Parity.Api.util.bytesToHex;
