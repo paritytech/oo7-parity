@@ -57,7 +57,7 @@ function wsTransport(){
 	return transport;
 }
 
-export function Bonds(transport = wsTransport()) {
+export function Bonds(transport = defaultTransport()) {
 	return createBonds({ api: new Parity.Api(transport) });
 }
 
@@ -90,22 +90,18 @@ function createBonds(options) {
 		}
 	}
 
-	// TODO: Use more generic means to check on number, ideally push notification.
 	class SubscriptionBond extends Bond {
-		constructor(rpc, api = 'parity_subscribe') {
+		constructor(rpc, options = []) {
 			super();
-			this.api = api;
-			this.rpc = rpc;
+			this.rpc = rpc();
+			this.options = [(_,n) => this.trigger(n), ...options];
 		}
-		initialise (options) {
-			options
-				? api().provider.addListener(this.api, this.rpc, (_,n) => this.trigger(n), options)
-											.then(id => this.subscription = id)
-				: api().provider.addListener(this.api, this.rpc, (_,n) => this.trigger(n))
-											.then(id => this.subscription = id);
+		initialise () {
+			// promise instead of id because if a dependency triggers finalise() before id's promise is resolved the unsubscribing would call with undefined
+			this.subscription = this.rpc.apply(api().pubsub, this.options);
 		}
 		finalise () {
-			api().provider.removeListener('parity_unsubscribe', this.subscription);
+			this.subscription.then(id => api().pubsub.unsubscribe([id]));
 		}
 		map (f) {
 					return new TransformBond(f, [this]);
@@ -217,24 +213,22 @@ function createBonds(options) {
 	};
 
     bonds.time = new TimeBond;
-	// TODO: rename `height`
-	//bonds.blockNumber = new TransformBond(() => api().eth.blockNumber().then(_=>+_), [], [bonds.time]);
-	bonds.blockNumber = new TransformBond(_=>+_, [new SubscriptionBond('eth_blockNumber')]);
-	bonds.accounts = new SubscriptionBond('eth_accounts').subscriptable();
-	bonds.hardwareAccountsInfo = new SubscriptionBond('parity_hardwareAccountsInfo').subscriptable();
-	bonds.accountsInfo = new SubscriptionBond('parity_accountsInfo').subscriptable();
-	bonds.defaultAccount = new SubscriptionBond('parity_defaultAccount').subscriptable();
-	bonds.allAccountsInfo = new SubscriptionBond('eth_accounts');
-	bonds.netPeers = new SubscriptionBond('parity_netPeers').subscriptable();
-	bonds.pendingTransactions = new SubscriptionBond('parity_pendingTransactions').subscriptable();
-	bonds.unsignedTransactionCount = new SubscriptionBond('parity_unsignedTransactionsCount').subscriptable();
+	bonds.height = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.blockNumber)]).subscriptable();
+	bonds.accounts = new SubscriptionBond(() => api().pubsub.accounts).subscriptable();
+	bonds.allAccountsInfo = bonds.accounts;	// double?
+	bonds.hardwareAccountsInfo = new SubscriptionBond(() => api().pubsub.hardwareAccountsInfo).subscriptable(2);
+	bonds.accountsInfo = new SubscriptionBond(() => api().pubsub.accountsInfo).subscriptable(2);
+	bonds.defaultAccount = new SubscriptionBond(() => api().pubsub.defaultAccount).subscriptable();
+	bonds.netPeers = new SubscriptionBond(() => api().pubsub.netPeers).subscriptable();
+	bonds.pendingTransactions = new SubscriptionBond(() => api().pubsub.pendingTransactions).subscriptable();
+	bonds.unsignedTransactionCount = new SubscriptionBond(() => api().pubsub.unsignedTransactionsCount).subscriptable();
 	//bonds.allAccountsInfo = new SubscriptionBond('parity_allAccountsInfo');
 	//bonds.requestsToConfirm = new SubscriptionBond('signer_requestsToConfirm');
 
 	Function.__proto__.bond = function(...args) { return new TransformBond(this, args); };
 	Function.__proto__.unlatchedBond = function(...args) { return new TransformBond(this, args, [], false, undefined); };
     Function.__proto__.timeBond = function(...args) { return new TransformBond(this, args, [bonds.time]); };
-    Function.__proto__.blockBond = function(...args) { return new TransformBond(this, args, [bonds.blockNumber]); };
+    Function.__proto__.blockBond = function(...args) { return new TransformBond(this, args, [bonds.height]); };
 
 	let presub = function (f) {
 		return new Proxy(f, {
@@ -252,120 +246,111 @@ function createBonds(options) {
 
 	function isNumber(n) { return typeof(n) === 'number' || (typeof(n) === 'string' && n.match(/^[0-9]+$/)); }
 
-	let onAccountsChanged = bonds.accounts;
-	let onHardwareAccountsChanged = bonds.hardwareAccountsInfo;
-	let onHeadChanged = bonds.blockNumber;
-//	let onReorg = undefined;	// TODO make more accurate.
-	let onSyncingChanged = bonds.time;
-	let onAuthoringDetailsChanged = bonds.time;
-	let onPeerNetChanged = bonds.netPeers;
-	let onPendingChanged = bonds.pendingTransactions;
-	let onUnsignedChanged = bonds.unsignedTransactionCount;
-	let onAutoUpdateChanged = bonds.blockNumber;
+	let onAutoUpdateChanged = bonds.height;
 
 	// eth_
-	bonds.height = bonds.blockNumber;
-	bonds.blockByNumber = (x => new TransformBond(x => api().eth.getBlockByNumber(x), [x], []).subscriptable());// TODO: chain reorg that includes number x
-	bonds.blockByHash = (x => new TransformBond(x => api().eth.getBlockByHash(x), [x]).subscriptable());
+	bonds.blockNumber = bonds.height;
+	bonds.blockByNumber = (numberBond => new TransformBond(number => new SubscriptionBond(() => api().pubsub.getBlockByNumber, [number]), [numberBond]).subscriptable());
+	bonds.blockByHash = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.getBlockByHash, [x]), [x]).subscriptable());
 	bonds.findBlock = (hashOrNumberBond => new TransformBond(hashOrNumber => isNumber(hashOrNumber)
-		? api().eth.getBlockByNumber(hashOrNumber)
-		: api().eth.getBlockByHash(hashOrNumber),
-		[hashOrNumberBond], [/*onReorg*/]).subscriptable());// TODO: chain reorg that includes number x, if x is a number
+		? new SubscriptionBond(() => api().pubsub.getBlockByNumber, [hashOrNumber])
+		: new SubscriptionBond(() => api().pubsub.getBlockByHash, [hashOrNumber]),
+		[hashOrNumberBond]).subscriptable());
 	bonds.blocks = presub(bonds.findBlock);
-	bonds.block = bonds.blockByNumber(bonds.blockNumber);	// TODO: DEPRECATE AND REMOVE
-	bonds.head = new TransformBond(() => api().eth.getBlockByNumber('latest'), [], [onHeadChanged]).subscriptable();// TODO: chain reorgs
-	bonds.author = new TransformBond(() => api().eth.coinbase(), [], [onAccountsChanged]);
+	bonds.block = bonds.blockByNumber(bonds.height);	// TODO: DEPRECATE AND REMOVE
+	bonds.head = new SubscriptionBond(() => api().pubsub.getBlockByNumber, ['latest']).subscriptable();
+	bonds.author = new SubscriptionBond(() => api().pubsub.coinbase);
 	//bonds.accounts = new TransformBond(a => a.map(util.toChecksumAddress), [new TransformBond(() => api().eth.accounts(), [], [onAccountsChanged])]).subscriptable();
 	//bonds.defaultAccount = bonds.accounts[0];	// TODO: make this use its subscription
-	bonds.me = bonds.accounts[0];
+	bonds.me = new SubscriptionBond(() => api().pubsub.defaultAccount);
 	bonds.post = tx => new Transaction(tx);
 	bonds.sign = (message, from = bonds.me) => new Signature(message, from);
 
-	bonds.balance = (x => new TransformBond(x => api().eth.getBalance(x), [x], [onHeadChanged]));
-	bonds.code = (x => new TransformBond(x => api().eth.getCode(x), [x], [onHeadChanged]));
-	bonds.nonce = (x => new TransformBond(x => api().eth.getTransactionCount(x).then(_ => +_), [x], [onHeadChanged]));
-	bonds.storageAt = ((x, y) => new TransformBond((x, y) => api().eth.getStorageAt(x, y), [x, y], [onHeadChanged]));
+	bonds.balance = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.getBalance, [x]), [x]));
+	bonds.code = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.getCode, [x]), [x]));
+	bonds.nonce = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.getTransactionCount, [x]), [x])); // TODO: then(_ => +_) Depth 2 if second TransformBond or apply to result
+	bonds.storageAt = ((x, y) => new TransformBond((x, y) => new SubscriptionBond(() => api().pubsub.getStorageAt, [x, y]), [x, y]));
 
-	bonds.syncing = new TransformBond(() => api().eth.syncing(), [], [onSyncingChanged]);
-	bonds.hashrate = new TransformBond(() => api().eth.hashrate(), [], [onAuthoringDetailsChanged]);
-	bonds.authoring = new TransformBond(() => api().eth.mining(), [], [onAuthoringDetailsChanged]);
-	bonds.ethProtocolVersion = new TransformBond(() => api().eth.protocolVersion(), [], []);
-	bonds.gasPrice = new TransformBond(() => api().eth.gasPrice(), [], [onHeadChanged]);
-	bonds.estimateGas = (x => new TransformBond(x => api().eth.estimateGas(x), [x], [onHeadChanged, onPendingChanged]));
+	bonds.syncing = new SubscriptionBond(() => api().pubsub.syncing);
+	bonds.hashrate = new SubscriptionBond(() => api().pubsub.hashrate);
+	bonds.authoring = new SubscriptionBond(() => api().pubsub.mining);
+	bonds.ethProtocolVersion = new SubscriptionBond(() => api().pubsub.protocolVersion);
+	bonds.gasPrice = new SubscriptionBond(() => api().pubsub.gasPrice);
+	bonds.estimateGas = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.estimateGas, [x]), [x]));
 
 	bonds.blockTransactionCount = (hashOrNumberBond => new TransformBond(
 		hashOrNumber => isNumber(hashOrNumber)
-			? api().eth.getBlockTransactionCountByNumber(hashOrNumber).then(_ => +_)
-			: api().eth.getBlockTransactionCountByHash(hashOrNumber).then(_ => +_),
-		[hashOrNumberBond], [/*onReorg*/]));
+			? new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.getBlockTransactionCountByNumber, [hashOrNumber])])
+			: new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.getBlockTransactionCountByHash, [hashOrNumber])]),
+		[hashOrNumberBond]));
 	bonds.uncleCount = (hashOrNumberBond => new TransformBond(
 		hashOrNumber => isNumber(hashOrNumber)
-			? api().eth.getUncleCountByBlockNumber(hashOrNumber).then(_ => +_)
-			: api().eth.getUncleCountByBlockHash(hashOrNumber).then(_ => +_),
-		[hashOrNumberBond], [/*onReorg*/]).subscriptable());
+			? new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.getUncleCountByBlockNumber, [hashOrNumber])])
+			: new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.getUncleCountByBlockHash, [hashOrNumber])]),
+		[hashOrNumberBond]).subscriptable());
 	bonds.uncle = ((hashOrNumberBond, indexBond) => new TransformBond(
 		(hashOrNumber, index) => isNumber(hashOrNumber)
-			? api().eth.getUncleByBlockNumber(hashOrNumber, index)
-			: api().eth.getUncleByBlockHash(hashOrNumber, index),
-		[hashOrNumberBond, indexBond], [/*onReorg*/]).subscriptable());
+			? new SubscriptionBond(() => api().pubsub.getUncleByBlockNumberAndIndex, [hashOrNumber, index])
+			: new SubscriptionBond(() => api().pubsub.getUncleByBlockHashAndIndex, [hashOrNumber, index]),
+		[hashOrNumberBond, indexBond]).subscriptable());
+
 	bonds.transaction = ((hashOrNumberBond, indexOrNullBond) => new TransformBond(
 		(hashOrNumber, indexOrNull) =>
 			indexOrNull === undefined || indexOrNull === null
-				? api().eth.getTransactionByHash(hashOrNumber)
+				? new SubscriptionBond(() => api().pubsub.getTransactionByHash, [hashOrNumber])
 				: isNumber(hashOrNumber)
-					? api().eth.getTransactionByBlockNumberAndIndex(hashOrNumber, indexOrNull)
-					: api().eth.getTransactionByBlockHashAndIndex(hashOrNumber, indexOrNull),
-			[hashOrNumberBond, indexOrNullBond], [/*onReorg*/]).subscriptable());
-	bonds.receipt = (hashBond => new TransformBond(x => api().eth.getTransactionReceipt(x), [hashBond], []).subscriptable());
+					? new SubscriptionBond(api().pubsub.getTransactionByBlockNumberAndIndex, [hashOrNumber, indexOrNull])
+					: new SubscriptionBond(api().pubsub.getTransactionByBlockHashAndIndex, [hashOrNumber, indexOrNull]),
+			[hashOrNumberBond, indexOrNullBond]).subscriptable());
+	bonds.receipt = (hashBond => new TransformBond(x => new SubscriptionBond(api().pubsub.getTransactionReceipt, [x]), [hashBond]).subscriptable());
 
 	// web3_
 	bonds.clientVersion = new TransformBond(() => api().web3.clientVersion(), [], []);
 
 	// net_
-	bonds.peerCount = new TransformBond(() => api().net.peerCount().then(_ => +_), [], [onPeerNetChanged]);
-	bonds.listening = new TransformBond(() => api().net.listening(), [], [onPeerNetChanged]);
-	bonds.chainId = new TransformBond(() => api().net.version(), [], []);
+	bonds.peerCount = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.peerCount)]);
+	bonds.listening = new SubscriptionBond(() => api().pubsub.listening);
+	bonds.chainId = new SubscriptionBond(() => api().pubsub.version);
 
 	// parity_
-	bonds.hashContent = u => new TransformBond(x => api().parity.hashContent(x), [u], [], false);
-	bonds.gasPriceHistogram = new TransformBond(() => api().parity.gasPriceHistogram(), [], [onHeadChanged]).subscriptable();
-	//bonds.accountsInfo = new TransformBond(() => api().parity.accountsInfo(), [], [onAccountsChanged]).subscriptable(2);
-	bonds.hardwareAccountsInfo = new TransformBond(() => api().parity.hardwareAccountsInfo(), [], [onHardwareAccountsChanged]).subscriptable(2);
-	bonds.mode = new TransformBond(() => api().parity.mode(), [], [bonds.blockNumber]);
+	bonds.hashContent = (u => new TransformBond(x => api().parity.hashContent(x), [u], [], false));
+	bonds.gasPriceHistogram = new SubscriptionBond(() => api().pubsub.gasPriceHistogram).subscriptable();
+	bonds.mode = new SubscriptionBond(() => api().pubsub.mode);
 
 	// ...authoring
-	bonds.defaultExtraData = new TransformBond(() => api().parity.defaultExtraData(), [], [onAuthoringDetailsChanged]);
-	bonds.extraData = new TransformBond(() => api().parity.extraData(), [], [onAuthoringDetailsChanged]);
-	bonds.gasCeilTarget = new TransformBond(() => api().parity.gasCeilTarget(), [], [onAuthoringDetailsChanged]);
-	bonds.gasFloorTarget = new TransformBond(() => api().parity.gasFloorTarget(), [], [onAuthoringDetailsChanged]);
-	bonds.minGasPrice = new TransformBond(() => api().parity.minGasPrice(), [], [onAuthoringDetailsChanged]);
-	bonds.transactionsLimit = new TransformBond(() => api().parity.transactionsLimit(), [], [onAuthoringDetailsChanged]);
+	bonds.defaultExtraData = new SubscriptionBond(() => api().pubsub.defaultExtraData);
+	bonds.extraData = new SubscriptionBond(() => api().pubsub.extraData);
+	bonds.gasCeilTarget = new SubscriptionBond(() => api().pubsub.gasCeilTarget);
+	bonds.gasFloorTarget = new SubscriptionBond(() => api().pubsub.gasFloorTarget);
+	bonds.minGasPrice = new SubscriptionBond(() => api().pubsub.minGasPrice);
+	bonds.transactionsLimit = new SubscriptionBond(() => api().pubsub.transactionsLimit);
 
 	// ...chain info
-	bonds.chainName = new TransformBond(() => api().parity.netChain(), [], []);
-	bonds.chainStatus = new TransformBond(() => api().parity.chainStatus(), [], [onSyncingChanged]).subscriptable();
+	bonds.chainName = new SubscriptionBond(() => api().pubsub.netChain);
+	bonds.chainStatus = new SubscriptionBond(() => api().pubsub.chainStatus).subscriptable();
 
 	// ...networking
-	bonds.peers = new TransformBond(() => api().parity.netPeers(), [], [onPeerNetChanged]).subscriptable(2);
-	bonds.enode = new TransformBond(() => api().parity.enode(), [], []);
-	bonds.nodePort = new TransformBond(() => api().parity.netPort().then(_=>+_), [], []);
-	bonds.nodeName = new TransformBond(() => api().parity.nodeName(), [], []);
+	bonds.peers = new SubscriptionBond(() => api().pubsub.netPeers).subscriptable(2);
+	bonds.enode = new SubscriptionBond(() => api().pubsub.enode);
+	bonds.nodePort = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.netPort)]);
+	bonds.nodeName = new SubscriptionBond(() => api().pubsub.nodeName);
+	// Where defined ?
 	bonds.signerPort = new TransformBond(() => api().parity.signerPort().then(_=>+_), [], []);
 	bonds.dappsPort = new TransformBond(() => api().parity.dappsPort().then(_=>+_), [], []);
 	bonds.dappsInterface = new TransformBond(() => api().parity.dappsInterface(), [], []);
 
 	// ...transaction queue
-	bonds.nextNonce = new TransformBond(() => api().parity.nextNonce().then(_=>+_), [], [onPendingChanged]);
-	bonds.pending = new TransformBond(() => api().parity.pendingTransactions(), [], [onPendingChanged]);
-	bonds.local = new TransformBond(() => api().parity.localTransactions(), [], [onPendingChanged]).subscriptable(3);
-	bonds.future = new TransformBond(() => api().parity.futureTransactions(), [], [onPendingChanged]).subscriptable(2);
-	bonds.pendingStats = new TransformBond(() => api().parity.pendingTransactionsStats(), [], [onPendingChanged]).subscriptable(2);
-	bonds.unsignedCount = new TransformBond(() => api().parity.parity_unsignedTransactionsCount().then(_=>+_), [], [onUnsignedChanged]);
+	bonds.nextNonce = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.nextNonce)]);
+	bonds.pending = new SubscriptionBond(() => api().pubsub.pendingTransactions);
+	bonds.local = new SubscriptionBond(() => api().pubsub.localTransactions).subscriptable(3);
+	bonds.future = new SubscriptionBond(() => api().pubsub.futureTransactions).subscriptable(2);
+	bonds.pendingStats = new SubscriptionBond(() => api().pubsub.pendingTransactionsStats).subscriptable(2);
+	bonds.unsignedCount = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.unsignedTransactionsCount)]);
 
 	// ...auto-update
-	bonds.releasesInfo = new TransformBond(() => api().parity.releasesInfo(), [], [onAutoUpdateChanged]).subscriptable();
-	bonds.versionInfo = new TransformBond(() => api().parity.versionInfo(), [], [onAutoUpdateChanged]).subscriptable();
-	bonds.consensusCapability = new TransformBond(() => api().parity.consensusCapability(), [], [onAutoUpdateChanged]);
+	bonds.releasesInfo = new SubscriptionBond(() => api().pubsub.releasesInfo).subscriptable();
+	bonds.versionInfo = new SubscriptionBond(() => api().pubsub.versionInfo).subscriptable();
+	bonds.consensusCapability = new SubscriptionBond(() => api().pubsub.consensusCapability).subscriptable();
 	bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
 
 	class DeployContract extends ReactivePromise {
@@ -405,7 +390,7 @@ function createBonds(options) {
 					let f = (addr, ...fargs) => call(addr, i, fargs, options)
 						.then(rets => rets.map((r, o) => cleanup(r, i.outputs[o].type, api)))
 						.then(unwrapIfOne);
-					return new TransformBond(f, [address, ...args], [bonds.blockNumber]).subscriptable();	// TODO: should be subscription on contract events
+					return new TransformBond(f, [address, ...args], [bonds.height]).subscriptable();	// TODO: should be subscription on contract events
 				};
 				r[i.name] = (i.inputs.length === 0) ? memoized(f) : (i.inputs.length === 1) ? presub(f) : f;
 			}
@@ -421,7 +406,7 @@ function createBonds(options) {
 					let args = i.args.map((v, index) => v === null ? fargs[index] : typeof(v) === 'function' ? v(fargs[index]) : v);
 					return call(addr, c, args, options).then(unwrapIfOne);
 				};
-				return new TransformBond(f, [address, ...args], [bonds.blockNumber]).subscriptable();	// TODO: should be subscription on contract events
+				return new TransformBond(f, [address, ...args], [bonds.height]).subscriptable();	// TODO: should be subscription on contract events
 			};
 			r[i.name] = (i.args.length === 1) ? presub(f) : f;
 		});
@@ -514,7 +499,7 @@ function createBonds(options) {
 							e.log = l;
 							return e;
 						}));
-					}, [address, indexed], [bonds.blockNumber]).subscriptable();
+					}, [address, indexed], [bonds.height]).subscriptable();
 				};
 			}
 		});
@@ -576,7 +561,8 @@ function createBonds(options) {
 }
 
 export var options = { api: new Parity.Api(defaultTransport()) };
-export const bonds = createBonds(options);
+// export const bonds = createBonds(options);
+export const bonds = createBonds({ api: new Parity.Api(wsTransport())});
 
 export const asciiToHex = Parity.Api.util.asciiToHex;
 export const bytesToHex = Parity.Api.util.bytesToHex;
