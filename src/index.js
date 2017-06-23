@@ -91,14 +91,14 @@ function createBonds(options) {
 	}
 
 	class SubscriptionBond extends Bond {
-		constructor(rpc, options = []) {
+		constructor(rpcName, options = []) {
 			super();
-			this.rpc = rpc();
+			this.rpcName = rpcName;
 			this.options = [(_,n) => this.trigger(n), ...options];
 		}
 		initialise () {
 			// promise instead of id because if a dependency triggers finalise() before id's promise is resolved the unsubscribing would call with undefined
-			this.subscription = this.rpc.apply(api().pubsub, this.options);
+			this.subscription = api().pubsub[rpcName](this.options);
 		}
 		finalise () {
 			this.subscription.then(id => api().pubsub.unsubscribe([id]));
@@ -213,15 +213,15 @@ function createBonds(options) {
 	};
 
     bonds.time = new TimeBond;
-	bonds.height = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.blockNumber)]).subscriptable();
-	bonds.accounts = new SubscriptionBond(() => api().pubsub.accounts).subscriptable();
+	bonds.height = new TransformBond(_=>+_, [new SubscriptionBond('blockNumber')]).subscriptable();
+	bonds.accounts = new SubscriptionBond('accounts').subscriptable();
 	bonds.allAccountsInfo = bonds.accounts;	// double?
-	bonds.hardwareAccountsInfo = new SubscriptionBond(() => api().pubsub.hardwareAccountsInfo).subscriptable(2);
-	bonds.accountsInfo = new SubscriptionBond(() => api().pubsub.accountsInfo).subscriptable(2);
-	bonds.defaultAccount = new SubscriptionBond(() => api().pubsub.defaultAccount).subscriptable();
-	bonds.netPeers = new SubscriptionBond(() => api().pubsub.netPeers).subscriptable();
-	bonds.pendingTransactions = new SubscriptionBond(() => api().pubsub.pendingTransactions).subscriptable();
-	bonds.unsignedTransactionCount = new SubscriptionBond(() => api().pubsub.unsignedTransactionsCount).subscriptable();
+	bonds.hardwareAccountsInfo = new SubscriptionBond('hardwareAccountsInfo').subscriptable(2);
+	bonds.accountsInfo = new SubscriptionBond('accountsInfo').subscriptable(2);
+	bonds.defaultAccount = new SubscriptionBond('defaultAccount').subscriptable();
+	bonds.netPeers = new SubscriptionBond('netPeers').subscriptable();
+	bonds.pendingTransactions = new SubscriptionBond('pendingTransactions').subscriptable();
+	bonds.unsignedTransactionCount = new SubscriptionBond('unsignedTransactionsCount').subscriptable();
 	//bonds.allAccountsInfo = new SubscriptionBond('parity_allAccountsInfo');
 	//bonds.requestsToConfirm = new SubscriptionBond('signer_requestsToConfirm');
 
@@ -250,107 +250,107 @@ function createBonds(options) {
 
 	// eth_
 	bonds.blockNumber = bonds.height;
-	bonds.blockByNumber = (numberBond => new TransformBond(number => new SubscriptionBond(() => api().pubsub.getBlockByNumber, [number]), [numberBond]).subscriptable());
-	bonds.blockByHash = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.getBlockByHash, [x]), [x]).subscriptable());
+	bonds.blockByNumber = (numberBond => new TransformBond(number => new SubscriptionBond('getBlockByNumber', [number]), [numberBond]).subscriptable());
+	bonds.blockByHash = (x => new TransformBond(x => new SubscriptionBond('getBlockByHash', [x]), [x]).subscriptable());
 	bonds.findBlock = (hashOrNumberBond => new TransformBond(hashOrNumber => isNumber(hashOrNumber)
-		? new SubscriptionBond(() => api().pubsub.getBlockByNumber, [hashOrNumber])
-		: new SubscriptionBond(() => api().pubsub.getBlockByHash, [hashOrNumber]),
+		? new SubscriptionBond('getBlockByNumber', [hashOrNumber])
+		: new SubscriptionBond('getBlockByHash', [hashOrNumber]),
 		[hashOrNumberBond]).subscriptable());
 	bonds.blocks = presub(bonds.findBlock);
 	bonds.block = bonds.blockByNumber(bonds.height);	// TODO: DEPRECATE AND REMOVE
-	bonds.head = new SubscriptionBond(() => api().pubsub.getBlockByNumber, ['latest']).subscriptable();
-	bonds.author = new SubscriptionBond(() => api().pubsub.coinbase);
+	bonds.head = new SubscriptionBond('getBlockByNumber', ['latest']).subscriptable();
+	bonds.author = new SubscriptionBond('coinbase');
 	//bonds.accounts = new TransformBond(a => a.map(util.toChecksumAddress), [new TransformBond(() => api().eth.accounts(), [], [onAccountsChanged])]).subscriptable();
 	//bonds.defaultAccount = bonds.accounts[0];	// TODO: make this use its subscription
-	bonds.me = new SubscriptionBond(() => api().pubsub.defaultAccount);
+	bonds.me = new SubscriptionBond('defaultAccount');
 	bonds.post = tx => new Transaction(tx);
 	bonds.sign = (message, from = bonds.me) => new Signature(message, from);
 
-	bonds.balance = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.getBalance, [x]), [x]));
-	bonds.code = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.getCode, [x]), [x]));
-	bonds.nonce = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.getTransactionCount, [x]), [x])); // TODO: then(_ => +_) Depth 2 if second TransformBond or apply to result
-	bonds.storageAt = ((x, y) => new TransformBond((x, y) => new SubscriptionBond(() => api().pubsub.getStorageAt, [x, y]), [x, y]));
+	bonds.balance = (x => new TransformBond(x => new SubscriptionBond('getBalance', [x]), [x]));
+	bonds.code = (x => new TransformBond(x => new SubscriptionBond('getCode', [x]), [x]));
+	bonds.nonce = (x => new TransformBond(x => new SubscriptionBond('getTransactionCount', [x]), [x])); // TODO: then(_ => +_) Depth 2 if second TransformBond or apply to result
+	bonds.storageAt = ((x, y) => new TransformBond((x, y) => new SubscriptionBond('getStorageAt', [x, y]), [x, y]));
 
-	bonds.syncing = new SubscriptionBond(() => api().pubsub.syncing);
-	bonds.hashrate = new SubscriptionBond(() => api().pubsub.hashrate);
-	bonds.authoring = new SubscriptionBond(() => api().pubsub.mining);
-	bonds.ethProtocolVersion = new SubscriptionBond(() => api().pubsub.protocolVersion);
-	bonds.gasPrice = new SubscriptionBond(() => api().pubsub.gasPrice);
-	bonds.estimateGas = (x => new TransformBond(x => new SubscriptionBond(() => api().pubsub.estimateGas, [x]), [x]));
+	bonds.syncing = new SubscriptionBond('syncing');
+	bonds.hashrate = new SubscriptionBond('hashrate');
+	bonds.authoring = new SubscriptionBond('mining');
+	bonds.ethProtocolVersion = new SubscriptionBond('protocolVersion');
+	bonds.gasPrice = new SubscriptionBond('gasPrice');
+	bonds.estimateGas = (x => new TransformBond(x => new SubscriptionBond('estimateGas', [x]), [x]));
 
 	bonds.blockTransactionCount = (hashOrNumberBond => new TransformBond(
 		hashOrNumber => isNumber(hashOrNumber)
-			? new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.getBlockTransactionCountByNumber, [hashOrNumber])])
-			: new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.getBlockTransactionCountByHash, [hashOrNumber])]),
+			? new TransformBond(_=>+_, [new SubscriptionBond('getBlockTransactionCountByNumber', [hashOrNumber])])
+			: new TransformBond(_=>+_, [new SubscriptionBond('getBlockTransactionCountByHash', [hashOrNumber])]),
 		[hashOrNumberBond]));
 	bonds.uncleCount = (hashOrNumberBond => new TransformBond(
 		hashOrNumber => isNumber(hashOrNumber)
-			? new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.getUncleCountByBlockNumber, [hashOrNumber])])
-			: new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.getUncleCountByBlockHash, [hashOrNumber])]),
+			? new TransformBond(_=>+_, [new SubscriptionBond('getUncleCountByBlockNumber', [hashOrNumber])])
+			: new TransformBond(_=>+_, [new SubscriptionBond('getUncleCountByBlockHash', [hashOrNumber])]),
 		[hashOrNumberBond]).subscriptable());
 	bonds.uncle = ((hashOrNumberBond, indexBond) => new TransformBond(
 		(hashOrNumber, index) => isNumber(hashOrNumber)
-			? new SubscriptionBond(() => api().pubsub.getUncleByBlockNumberAndIndex, [hashOrNumber, index])
-			: new SubscriptionBond(() => api().pubsub.getUncleByBlockHashAndIndex, [hashOrNumber, index]),
+			? new SubscriptionBond('getUncleByBlockNumberAndIndex', [hashOrNumber, index])
+			: new SubscriptionBond('getUncleByBlockHashAndIndex', [hashOrNumber, index]),
 		[hashOrNumberBond, indexBond]).subscriptable());
 
 	bonds.transaction = ((hashOrNumberBond, indexOrNullBond) => new TransformBond(
 		(hashOrNumber, indexOrNull) =>
 			indexOrNull === undefined || indexOrNull === null
-				? new SubscriptionBond(() => api().pubsub.getTransactionByHash, [hashOrNumber])
+				? new SubscriptionBond('getTransactionByHash', [hashOrNumber])
 				: isNumber(hashOrNumber)
-					? new SubscriptionBond(api().pubsub.getTransactionByBlockNumberAndIndex, [hashOrNumber, indexOrNull])
-					: new SubscriptionBond(api().pubsub.getTransactionByBlockHashAndIndex, [hashOrNumber, indexOrNull]),
+					? new SubscriptionBond('getTransactionByBlockNumberAndIndex', [hashOrNumber, indexOrNull])
+					: new SubscriptionBond('getTransactionByBlockHashAndIndex', [hashOrNumber, indexOrNull]),
 			[hashOrNumberBond, indexOrNullBond]).subscriptable());
-	bonds.receipt = (hashBond => new TransformBond(x => new SubscriptionBond(api().pubsub.getTransactionReceipt, [x]), [hashBond]).subscriptable());
+	bonds.receipt = (hashBond => new TransformBond(x => new SubscriptionBond('getTransactionReceipt', [x]), [hashBond]).subscriptable());
 
 	// web3_
 	bonds.clientVersion = new TransformBond(() => api().web3.clientVersion(), [], []);
 
 	// net_
-	bonds.peerCount = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.peerCount)]);
-	bonds.listening = new SubscriptionBond(() => api().pubsub.listening);
-	bonds.chainId = new SubscriptionBond(() => api().pubsub.version);
+	bonds.peerCount = new TransformBond(_=>+_, [new SubscriptionBond('peerCount')]);
+	bonds.listening = new SubscriptionBond('listening');
+	bonds.chainId = new SubscriptionBond('version');
 
 	// parity_
 	bonds.hashContent = (u => new TransformBond(x => api().parity.hashContent(x), [u], [], false));
-	bonds.gasPriceHistogram = new SubscriptionBond(() => api().pubsub.gasPriceHistogram).subscriptable();
-	bonds.mode = new SubscriptionBond(() => api().pubsub.mode);
+	bonds.gasPriceHistogram = new SubscriptionBond('gasPriceHistogram').subscriptable();
+	bonds.mode = new SubscriptionBond('mode');
 
 	// ...authoring
-	bonds.defaultExtraData = new SubscriptionBond(() => api().pubsub.defaultExtraData);
-	bonds.extraData = new SubscriptionBond(() => api().pubsub.extraData);
-	bonds.gasCeilTarget = new SubscriptionBond(() => api().pubsub.gasCeilTarget);
-	bonds.gasFloorTarget = new SubscriptionBond(() => api().pubsub.gasFloorTarget);
-	bonds.minGasPrice = new SubscriptionBond(() => api().pubsub.minGasPrice);
-	bonds.transactionsLimit = new SubscriptionBond(() => api().pubsub.transactionsLimit);
+	bonds.defaultExtraData = new SubscriptionBond('defaultExtraData');
+	bonds.extraData = new SubscriptionBond('extraData');
+	bonds.gasCeilTarget = new SubscriptionBond('gasCeilTarget');
+	bonds.gasFloorTarget = new SubscriptionBond('gasFloorTarget');
+	bonds.minGasPrice = new SubscriptionBond('minGasPrice');
+	bonds.transactionsLimit = new SubscriptionBond('transactionsLimit');
 
 	// ...chain info
-	bonds.chainName = new SubscriptionBond(() => api().pubsub.netChain);
-	bonds.chainStatus = new SubscriptionBond(() => api().pubsub.chainStatus).subscriptable();
+	bonds.chainName = new SubscriptionBond('netChain');
+	bonds.chainStatus = new SubscriptionBond('chainStatus').subscriptable();
 
 	// ...networking
-	bonds.peers = new SubscriptionBond(() => api().pubsub.netPeers).subscriptable(2);
-	bonds.enode = new SubscriptionBond(() => api().pubsub.enode);
-	bonds.nodePort = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.netPort)]);
-	bonds.nodeName = new SubscriptionBond(() => api().pubsub.nodeName);
+	bonds.peers = new SubscriptionBond('netPeers').subscriptable(2);
+	bonds.enode = new SubscriptionBond('enode');
+	bonds.nodePort = new TransformBond(_=>+_, [new SubscriptionBond('netPort')]);
+	bonds.nodeName = new SubscriptionBond('nodeName');
 	// Where defined ?
 	bonds.signerPort = new TransformBond(() => api().parity.signerPort().then(_=>+_), [], []);
 	bonds.dappsPort = new TransformBond(() => api().parity.dappsPort().then(_=>+_), [], []);
 	bonds.dappsInterface = new TransformBond(() => api().parity.dappsInterface(), [], []);
 
 	// ...transaction queue
-	bonds.nextNonce = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.nextNonce)]);
-	bonds.pending = new SubscriptionBond(() => api().pubsub.pendingTransactions);
-	bonds.local = new SubscriptionBond(() => api().pubsub.localTransactions).subscriptable(3);
-	bonds.future = new SubscriptionBond(() => api().pubsub.futureTransactions).subscriptable(2);
-	bonds.pendingStats = new SubscriptionBond(() => api().pubsub.pendingTransactionsStats).subscriptable(2);
-	bonds.unsignedCount = new TransformBond(_=>+_, [new SubscriptionBond(() => api().pubsub.unsignedTransactionsCount)]);
+	bonds.nextNonce = new TransformBond(_=>+_, [new SubscriptionBond('nextNonce')]);
+	bonds.pending = new SubscriptionBond('pendingTransactions');
+	bonds.local = new SubscriptionBond('localTransactions').subscriptable(3);
+	bonds.future = new SubscriptionBond('futureTransactions').subscriptable(2);
+	bonds.pendingStats = new SubscriptionBond('pendingTransactionsStats').subscriptable(2);
+	bonds.unsignedCount = new TransformBond(_=>+_, [new SubscriptionBond('unsignedTransactionsCount')]);
 
 	// ...auto-update
-	bonds.releasesInfo = new SubscriptionBond(() => api().pubsub.releasesInfo).subscriptable();
-	bonds.versionInfo = new SubscriptionBond(() => api().pubsub.versionInfo).subscriptable();
-	bonds.consensusCapability = new SubscriptionBond(() => api().pubsub.consensusCapability).subscriptable();
+	bonds.releasesInfo = new SubscriptionBond('releasesInfo').subscriptable();
+	bonds.versionInfo = new SubscriptionBond('versionInfo').subscriptable();
+	bonds.consensusCapability = new SubscriptionBond('consensusCapability').subscriptable();
 	bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
 
 	class DeployContract extends ReactivePromise {
