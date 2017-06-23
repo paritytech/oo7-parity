@@ -98,7 +98,7 @@ function createBonds(options) {
 		}
 		initialise () {
 			// promise instead of id because if a dependency triggers finalise() before id's promise is resolved the unsubscribing would call with undefined
-			this.subscription = api().pubsub[rpcName](this.options);
+			this.subscription = api().pubsub[this.rpcName](...this.options);
 		}
 		finalise () {
 			this.subscription.then(id => api().pubsub.unsubscribe([id]));
