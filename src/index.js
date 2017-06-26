@@ -103,11 +103,11 @@ function createBonds(options) {
 		finalise () {
 			this.subscription.then(id => api().pubsub.unsubscribe([id]));
 		}
-		map (f) {
-					return new TransformBond(f, [this]);
-			}
-		sub (name) {
-			return new TransformBond((r, n) => r[n], [this, name]);
+		map (f, outResolveDepth = 0, resolveDepth = 1) {
+			return new TransformBond(f, [this], [], outResolveDepth, resolveDepth);
+		}
+		sub (name, outResolveDepth = 0, resolveDepth = 1) {
+			return new TransformBond((r, n) => r[n], [this, name], [], outResolveDepth, resolveDepth);
 		}
 		static all(list) {
 			return new TransformBond((...args) => args, list);
@@ -212,7 +212,7 @@ function createBonds(options) {
 		return new Transaction(toOptions.bond(addr, method, options, ...args));
 	};
 
-    bonds.time = new TimeBond;
+	bonds.time = new TimeBond;
 	bonds.height = new TransformBond(_=>+_, [new SubscriptionBond('blockNumber')]).subscriptable();
 	bonds.accounts = new SubscriptionBond('accounts').subscriptable();
 	bonds.allAccountsInfo = bonds.accounts;	// double?
@@ -227,8 +227,8 @@ function createBonds(options) {
 
 	Function.__proto__.bond = function(...args) { return new TransformBond(this, args); };
 	Function.__proto__.unlatchedBond = function(...args) { return new TransformBond(this, args, [], false, undefined); };
-    Function.__proto__.timeBond = function(...args) { return new TransformBond(this, args, [bonds.time]); };
-    Function.__proto__.blockBond = function(...args) { return new TransformBond(this, args, [bonds.height]); };
+	Function.__proto__.timeBond = function(...args) { return new TransformBond(this, args, [bonds.time]); };
+	Function.__proto__.blockBond = function(...args) { return new TransformBond(this, args, [bonds.height]); };
 
 	let presub = function (f) {
 		return new Proxy(f, {
