@@ -215,7 +215,6 @@ function createBonds(options) {
 	bonds.time = new TimeBond;
 	bonds.height = new TransformBond(_=>+_, [new SubscriptionBond('blockNumber')]).subscriptable();
 	bonds.accounts = new SubscriptionBond('accounts').subscriptable();
-	bonds.allAccountsInfo = bonds.accounts;	// double?
 	bonds.hardwareAccountsInfo = new SubscriptionBond('hardwareAccountsInfo').subscriptable(2);
 	bonds.accountsInfo = new SubscriptionBond('accountsInfo').subscriptable(2);
 	bonds.defaultAccount = new SubscriptionBond('defaultAccount').subscriptable();
@@ -224,6 +223,9 @@ function createBonds(options) {
 	bonds.unsignedTransactionCount = new SubscriptionBond('unsignedTransactionsCount').subscriptable();
 	//bonds.allAccountsInfo = new SubscriptionBond('parity_allAccountsInfo');
 	//bonds.requestsToConfirm = new SubscriptionBond('signer_requestsToConfirm');
+
+	let onAccountsChanged = bonds.accounts;	// TODO: Having pubsub method to retrieve allAccountsInfo (In progress - parity_accounts not enabled yet)
+	bonds.allAccountsInfo = new TransformBond(() => api().parity.allAccountsInfo(), [], [onAccountsChanged]).subscriptable();
 
 	Function.__proto__.bond = function(...args) { return new TransformBond(this, args); };
 	Function.__proto__.unlatchedBond = function(...args) { return new TransformBond(this, args, [], false, undefined); };
@@ -352,6 +354,10 @@ function createBonds(options) {
 	bonds.versionInfo = new SubscriptionBond('versionInfo').subscriptable();
 	bonds.consensusCapability = new SubscriptionBond('consensusCapability').subscriptable();
 	bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
+
+	// trace
+	bonds.replayTx = ((x,whatTrace) => new TransformBond((x,whatTrace) => api().trace.replayTransaction(x, whatTrace), [x, whatTrace], []).subscriptable());
+	bonds.callTx = ((x,whatTrace,blockNumber) => new TransformBond((x,whatTrace,blockNumber) => api().trace.call(x, whatTrace, blockNumber), [x, whatTrace, blockNumber], []).subscriptable());
 
 	class DeployContract extends ReactivePromise {
 		constructor(initBond, abiBond, optionsBond) {
