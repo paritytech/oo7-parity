@@ -1,7 +1,7 @@
 import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from 'oo7';
 import BigNumber from 'bignumber.js';
 // For dev-only (use local version not npm)
-// const Parity = window.parity;
+//const Parity = window.parity;
 require('@parity/parity.js');
 
 import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
@@ -360,6 +360,15 @@ function createBonds(options) {
 	bonds.replayTx = ((x,whatTrace) => new TransformBond((x,whatTrace) => api().trace.replayTransaction(x, whatTrace), [x, whatTrace], []).subscriptable());
 	bonds.callTx = ((x,whatTrace,blockNumber) => new TransformBond((x,whatTrace,blockNumber) => api().trace.call(x, whatTrace, blockNumber), [x, whatTrace, blockNumber], []).subscriptable());
 
+	function traceCall(addr, method, args, options) {
+		let data = util.abiEncode(method.name, method.inputs.map(f => f.type), args);
+		let decode = d => util.abiDecode(method.outputs.map(f => f.type), d);
+		let traceMode = options.traceMode;
+		console.log(`traceMode: ${options.traceMode}`)
+		delete options.traceMode;
+		return api().trace.call(overlay({to: addr, data: data}, options), traceMode, 'latest');
+	};
+
 	class DeployContract extends ReactivePromise {
 		constructor(initBond, abiBond, optionsBond) {
 			super([initBond, abiBond, optionsBond, bonds.registry], [], ([init, abi, options, registry]) => {
@@ -385,7 +394,7 @@ function createBonds(options) {
 		return new DeployContract(init, abi, options);
 	}
 
-	bonds.makeContract = function(address, abi, extras = []) {
+	bonds.makeContract = function(address, abi, extras = [], debug = false) {
 		var r = { address: address };
 		let unwrapIfOne = a => a.length == 1 ? a[0] : a;
 		abi.forEach(i => {
@@ -394,7 +403,9 @@ function createBonds(options) {
 					var options = args.length === i.inputs.length + 1 ? args.unshift() : {};
 					if (args.length != i.inputs.length)
 						throw `Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}.`;
-					let f = (addr, ...fargs) => call(addr, i, fargs, options)
+					let f = (addr, ...fargs) => debug
+						? traceCall(address, i, args, options)
+						: call(addr, i, fargs, options)
 						.then(rets => rets.map((r, o) => cleanup(r, i.outputs[o].type, api)))
 						.then(unwrapIfOne);
 					return new TransformBond(f, [address, ...args], [bonds.height]).subscriptable();	// TODO: should be subscription on contract events
@@ -411,7 +422,9 @@ function createBonds(options) {
 				let c = abi.find(j => j.name == i.method);
 				let f = (addr, ...fargs) => {
 					let args = i.args.map((v, index) => v === null ? fargs[index] : typeof(v) === 'function' ? v(fargs[index]) : v);
-					return call(addr, c, args, options).then(unwrapIfOne);
+					return debug
+									? traceCall(address, i, args, options)
+									: call(addr, c, args, options).then(unwrapIfOne);
 				};
 				return new TransformBond(f, [address, ...args], [bonds.height]).subscriptable();	// TODO: should be subscription on contract events
 			};
@@ -423,7 +436,9 @@ function createBonds(options) {
 					var options = args.length === i.inputs.length + 1 ? args.pop() : {};
 					if (args.length !== i.inputs.length)
 						throw `Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}.`;
-					return post(address, i, args, options).subscriptable();
+					return debug
+									? traceCall(address, i, args, options)
+									: post(address, i, args, options).subscriptable();
 				};
 			}
 		});
@@ -650,6 +665,10 @@ export function formatValue(n) {
 
 export function formatValueNoDenom(n) {
 	return `${n.units.toString().replace(/(\d)(?=(\d{3})+$)/g, "$1,")}${n.decimals ? '.' + n.decimals : ''}`;
+}
+
+export function formatToExponential(v, n) {
+	return new BigNumber(v).toExponential(4);
 }
 
 export function interpretQuantity(s) {
