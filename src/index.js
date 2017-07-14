@@ -364,7 +364,6 @@ function createBonds(options) {
 		let data = util.abiEncode(method.name, method.inputs.map(f => f.type), args);
 		let decode = d => util.abiDecode(method.outputs.map(f => f.type), d);
 		let traceMode = options.traceMode;
-		console.log(`traceMode: ${options.traceMode}`)
 		delete options.traceMode;
 		return api().trace.call(overlay({to: addr, data: data}, options), traceMode, 'latest');
 	};
