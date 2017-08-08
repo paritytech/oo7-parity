@@ -1,8 +1,10 @@
 import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from 'oo7';
 import BigNumber from 'bignumber.js';
 // For dev-only (use local version not npm)
-//const Parity = window.parity;
-require('@parity/parity.js');
+// const Parity = window.parity;
+const Parity = window.parity || window.parent.parity;
+const ethereumProvider = window.ethereum || window.parent.ethereum || new Parity.Api.Provider.Http('/rpc/');
+
 
 import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
 	BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } from './abis.js';
@@ -12,52 +14,7 @@ export function setupBonds(_api = parity.api) {
 	return createBonds({ api: _api });
 }
 
-function httpTransport() {
-	var transport;
-
-	// Check to see if there's already a parity object injected in window.
-	if (window && window.parity && window.parity.api.transport._url && window.location.protocol.match('^https?:$')) {
-		transport = new Parity.Api.Transport.Http(
-			window.parity.api.transport._url[0] === '/'
-				? window.location.protocol + '//' + window.location.host + window.parity.api.transport._url
-			: window.parity.api.transport._url.contains('://')
-				? window.parity.api.transport._url
-				: window.location.href + window.parity.api.transport._url
-		);
-	}
-
-	// Fallback to localhost:8545
-	if (!transport) {
-		transport = new Parity.Api.Transport.Http('http://localhost:8545');
-	}
-
-	return transport;
-}
-
-// Pubsub websocket transport
-function defaultTransport(){
-	var transport;
-
-	// Check to see if there's already a parity object injected in window.
-	if (window && window.parity && window.parity.api.transport._url && window.location.protocol.match('^wss?:$')) {
-		transport = new Parity.Api.Transport.Ws(
-			window.parity.api.transport._url[0] === '/'
-				? window.location.protocol + '//' + window.location.host + window.parity.api.transport._url
-			: window.parity.api.transport._url.contains('://')
-				? window.parity.api.transport._url
-				: window.location.href + window.parity.api.transport._url
-		);
-	}
-
-	// Fallback to localhost:8546
-	if (!transport){
-		transport = new Parity.Api.Transport.Ws('ws://localhost:8546');
-	}
-
-	return transport;
-}
-
-export function Bonds(transport = defaultTransport()) {
+export function Bonds(transport = ethereumProvider) {
 	return createBonds({ api: new Parity.Api(transport) });
 }
 
@@ -360,7 +317,7 @@ function createBonds(options) {
 	bonds.replayTx = ((x,whatTrace) => new TransformBond((x,whatTrace) => api().trace.replayTransaction(x, whatTrace), [x, whatTrace], []).subscriptable());
 	bonds.callTx = ((x,whatTrace,blockNumber) => new TransformBond((x,whatTrace,blockNumber) => api().trace.call(x, whatTrace, blockNumber), [x, whatTrace, blockNumber], []).subscriptable());
 
-	function traceCall(addr, method, args, options) {
+	function traceCall (addr, method, args, options) {
 		let data = util.abiEncode(method.name, method.inputs.map(f => f.type), args);
 		let decode = d => util.abiDecode(method.outputs.map(f => f.type), d);
 		let traceMode = options.traceMode;
@@ -399,7 +356,7 @@ function createBonds(options) {
 		abi.forEach(i => {
 			if (i.type == 'function' && i.constant) {
 				let f = function (...args) {
-					var options = args.length === i.inputs.length + 1 ? args.unshift() : {};
+					var options = args.length === i.inputs.length + 1 ? args.pop() : {};
 					if (args.length != i.inputs.length)
 						throw `Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}.`;
 					let f = (addr, ...fargs) => debug
@@ -410,14 +367,15 @@ function createBonds(options) {
 					return new TransformBond(f, [address, ...args], [bonds.height]).subscriptable();	// TODO: should be subscription on contract events
 				};
 				r[i.name] = (i.inputs.length === 0) ? memoized(f) : (i.inputs.length === 1) ? presub(f) : f;
+				r[i.name].args = i.inputs;
 			}
 		});
 		extras.forEach(i => {
 			let f = function (...args) {
 				let expectedInputs = (i.numInputs || i.args.length);
-				var options = args.length === expectedInputs + 1 ? args.unshift() : {};
+				var options = args.length === expectedInputs + 1 ? args.pop() : {};
 				if (args.length != expectedInputs)
-					throw `Invalid number of arguments to ${i.name}. Expected ${expectedInputs}, got ${args.length}.`;
+					throw `Invalid number of arguments to ${i.name}. Expected ${expectedInputs}, got ${args.length}. ${args}`;
 				let c = abi.find(j => j.name == i.method);
 				let f = (addr, ...fargs) => {
 					let args = i.args.map((v, index) => v === null ? fargs[index] : typeof(v) === 'function' ? v(fargs[index]) : v);
@@ -428,17 +386,19 @@ function createBonds(options) {
 				return new TransformBond(f, [address, ...args], [bonds.height]).subscriptable();	// TODO: should be subscription on contract events
 			};
 			r[i.name] = (i.args.length === 1) ? presub(f) : f;
+			r[i.name].args = i.args;
 		});
 		abi.forEach(i => {
 			if (i.type == 'function' && !i.constant) {
 				r[i.name] = function (...args) {
 					var options = args.length === i.inputs.length + 1 ? args.pop() : {};
 					if (args.length !== i.inputs.length)
-						throw `Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}.`;
+						throw `Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}. ${args}`;
 					return debug
 									? traceCall(address, i, args, options)
 									: post(address, i, args, options).subscriptable();
 				};
+				r[i.name].args = i.inputs;
 			}
 		});
 		var eventLookup = {};
@@ -522,6 +482,7 @@ function createBonds(options) {
 						}));
 					}, [address, indexed], [bonds.height]).subscriptable();
 				};
+				r[i.name].args = i.inputs;
 			}
 		});
 		return r;
@@ -581,8 +542,9 @@ function createBonds(options) {
 	return bonds;
 }
 
-export var options = { api: new Parity.Api(defaultTransport()) };
+export var options = { api: new Parity.Api(ethereumProvider) };
 export const bonds = createBonds(options);
+window.bonds = bonds;
 
 export const asciiToHex = Parity.Api.util.asciiToHex;
 export const bytesToHex = Parity.Api.util.bytesToHex;
