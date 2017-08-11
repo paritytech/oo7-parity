@@ -1,10 +1,10 @@
 import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from 'oo7';
 import BigNumber from 'bignumber.js';
 // For dev-only (use local version not npm)
-// const Parity = window.parity;
-const Parity = window.parity || window.parent.parity || require('@parity/parity.js');
+// const Parity = window.parity || window.parent.parity;
+const Parity = require('@parity/parity.js');
+// Use ethereumProvider exposed by parity/web3/metamask (Standardization process: https://github.com/ethereum/interfaces/issues/16#issuecomment-299803228 )
 const ethereumProvider = window.ethereum || window.parent.ethereum || new Parity.Api.Provider.Http('/rpc/');
-
 
 import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
 	BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } from './abis.js';
@@ -578,9 +578,8 @@ function createBonds(options) {
 	return bonds;
 }
 
-export var options = { api: new Parity.Api(ethereumProvider) };
-export const bonds = createBonds(options);
-window.bonds = bonds;
+export var options = ethereumProvider ? { api: new Parity.Api(ethereumProvider) } : null;
+export const bonds = options ? createBonds(options) : null;
 
 export const asciiToHex = Parity.Api.util.asciiToHex;
 export const bytesToHex = Parity.Api.util.bytesToHex;
