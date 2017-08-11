@@ -26,6 +26,10 @@
     "url": "https://github.com/ethcore/oo7-parity/issues"
   },
   "homepage": "https://github.com/ethcore/oo7-parity#readme",
+  "dependencies": {
+    "bignumber.js":"^4.0.0",
+    "@parity/parity.js":"1.8.11"
+  },
   "peerDependencies": {
     "oo7": ">=0.5"
   },

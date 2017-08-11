@@ -1,4 +1,4 @@
-const Parity = window.parity || window.parent.parity;
+const Parity = window.parity || window.parent.parity || require('@parity/parity.js');
 
 const sha3 = Parity.Api.util.sha3;
 

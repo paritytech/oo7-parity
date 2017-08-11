@@ -2,7 +2,7 @@ import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from
 import BigNumber from 'bignumber.js';
 // For dev-only (use local version not npm)
 // const Parity = window.parity;
-const Parity = window.parity || window.parent.parity;
+const Parity = window.parity || window.parent.parity || require('@parity/parity.js');
 const ethereumProvider = window.ethereum || window.parent.ethereum || new Parity.Api.Provider.Http('/rpc/');
 
 
