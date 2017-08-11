@@ -313,7 +313,7 @@ function createBonds(options) {
 	bonds.consensusCapability = new SubscriptionBond('parity', 'consensusCapability').subscriptable();
 	bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
 
-	// trace
+	// trace TODO: Implement contract object with new trace_many feature
 	bonds.replayTx = ((x,whatTrace) => new TransformBond((x,whatTrace) => api().trace.replayTransaction(x, whatTrace), [x, whatTrace], []).subscriptable());
 	bonds.callTx = ((x,whatTrace,blockNumber) => new TransformBond((x,whatTrace,blockNumber) => api().trace.call(x, whatTrace, blockNumber), [x, whatTrace, blockNumber], []).subscriptable());
 
