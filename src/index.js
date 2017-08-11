@@ -526,6 +526,42 @@ function createBonds(options) {
 		[address, bonds.badges], [], 2
 	).map(all => all.filter(_=>_.certified));
 
+	bonds.tokens = new TransformBond(n => {
+		var ret = [];
+		for (var i = 0; i < +n; ++i) {
+			let id = i;
+			ret.push(Bond.all([
+					bonds.tokenreg.token(id),
+					bonds.tokenreg.meta(id, 'IMG'),
+					bonds.tokenreg.meta(id, 'CAPTION')
+				]).map(([[addr, tla, base, name, owner], img, caption]) => ({
+					id,
+					tla,
+					base,
+					name,
+					img,
+					caption,
+					token: bonds.makeContract(addr, TokenABI)
+				}))
+			);
+		}
+		return ret;
+	}, [bonds.tokenreg.tokenCount()], [], 1);
+
+	bonds.tokensOf = address => new TransformBond(
+		(addr, bads) => bads.map(b => ({
+			balance: b.token.balanceOf(addr),
+			token: b.token,
+			id: b.id,
+			name: b.name,
+			tla: b.tla,
+			base: b.base,
+			img: b.img,
+			caption: b.caption,
+		})),
+		[address, bonds.tokens], [], 2
+	).map(all => all.filter(_=>_.balance.gt(0)));
+
 	bonds.namesOf = address => new TransformBond((reg, addr, accs) => ({
 		owned: accs[addr] ? accs[addr].name : null,
 		registry: reg || null
@@ -549,9 +585,12 @@ window.bonds = bonds;
 export const asciiToHex = Parity.Api.util.asciiToHex;
 export const bytesToHex = Parity.Api.util.bytesToHex;
 export const hexToAscii = Parity.Api.util.hexToAscii;
-export const isAddressValid = Parity.Api.util.isAddressValid;
-export const sha3 = Parity.Api.util.sha3;
-export const toChecksumAddress = Parity.Api.util.toChecksumAddress;
+export const isAddressValid = h => h instanceof Bond ? h.map(Parity.Api.util.isAddressValid) : Parity.Api.util.isAddressValid(h);
+export const toChecksumAddress = h => h instanceof Bond ? h.map(Parity.Api.util.toChecksumAddress) : Parity.Api.util.toChecksumAddress(h);
+export const sha3 = h => h instanceof Bond ? h.map(Parity.Api.util.sha3) : Parity.Api.util.sha3(h);
+
+export const isOwned = addr => Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
+export const isNotOwned = addr => Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
 
 // Deprecated.
 export { abiPolyfill };
