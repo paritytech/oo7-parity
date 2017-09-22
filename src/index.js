@@ -562,7 +562,6 @@ function createBonds(options) {
 }
 
 const t = defaultProvider();
-console.log('t',t);
 export var options = t ? { api: new ParityApi(t) } : null;
 export const bonds = options ? createBonds(options) : null;
 
