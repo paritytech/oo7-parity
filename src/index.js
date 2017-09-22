@@ -4,7 +4,6 @@ import BigNumber from 'bignumber.js';
 import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
 	BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } from './abis.js';
 
-//const Parity = require('@parity/parity.js');
 import ParityApi from '@parity/api';
 
 // DEPRECATED. TODO: REMOVE
