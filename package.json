@@ -31,10 +31,7 @@
   "homepage": "https://github.com/ethcore/oo7-parity#readme",
   "dependencies": {
     "@parity/api": "^2",
-<<<<<<< HEAD
-=======
     "@parity/parity.js": "^1.7.82",
->>>>>>> 68a95c06c98fddc9f292e5a3ce77a15cbb41f70a
     "bignumber.js": "^4.0.0",
     "oo7": "^0.5.6"
   },
