@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ethcore/oo7-parity.git"
+    "url": "git+https://github.com/paritytech/oo7-parity.git"
   },
   "keywords": [
     "Promise",
@@ -26,9 +26,9 @@
   "author": "Parity Technologies <admin@parity.io> (https://parity.io/)",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/ethcore/oo7-parity/issues"
+    "url": "https://github.com/paritytech/oo7-parity/issues"
   },
-  "homepage": "https://github.com/ethcore/oo7-parity#readme",
+  "homepage": "https://github.com/paritytech/oo7-parity#readme",
   "dependencies": {
     "@parity/parity.js": "^1.7.82",
     "bignumber.js": "^4.0.0",
