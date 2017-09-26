@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "test": "npm run compile && mocha --compilers js:babel-core/register  --reporter spec",
-    "compile": "babel --presets es2015 -d lib/ src/",
+    "compile": "babel --presets env -d lib/ src/",
     "prepublish": "../oo7/prepublish.sh && npm run compile",
     "postpublish": "../oo7/postpublish.sh"
   },
@@ -32,12 +32,12 @@
   "dependencies": {
     "@parity/parity.js": "^1.7.82",
     "bignumber.js": "^4.0.0",
-    "oo7": "^0.5.4"
+    "oo7": "^0.5.6"
   },
   "devDependencies": {
     "babel-cli": "^6.22.2",
     "babel-eslint": "^8.0.0",
-    "babel-preset-env": "^6.22.0",
+    "babel-preset-env": "^1.6.0",
     "chai": "^3.5.0",
     "eslint": "^4.7.2",
     "eslint-config-semistandard": "^11.0.0",
