@@ -310,6 +310,7 @@ function createBonds(options) {
 	bonds.hashContent = u => new TransformBond(x => api().parity.hashContent(x), [u], [], false);
 	bonds.gasPriceHistogram = new TransformBond(() => api().parity.gasPriceHistogram(), [], [onHeadChanged]).subscriptable();
 	bonds.accountsInfo = new TransformBond(() => api().parity.accountsInfo(), [], [onAccountsChanged]).subscriptable(2);
+	bonds.allAccountsInfo = new TransformBond(() => api().parity.allAccountsInfo(), [], [onAccountsChanged]).subscriptable(2);
 	bonds.hardwareAccountsInfo = new TransformBond(() => api().parity.hardwareAccountsInfo(), [], [onHardwareAccountsChanged]).subscriptable(2);
 	bonds.mode = new TransformBond(() => api().parity.mode(), [], [bonds.height]);
 
