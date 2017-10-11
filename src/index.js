@@ -99,12 +99,13 @@ function createBonds(options) {
 
 	function transactionPromise(tx, progress, f) {
 		progress({initialising: null});
+		let condition = tx.condition || null;
 		Promise.all([api().eth.accounts(), api().eth.gasPrice()])
 			.then(([a, p]) => {
 				progress({estimating: null});
 				tx.from = tx.from || a[0];
 				tx.gasPrice = tx.gasPrice || p;
-				return api().eth.estimateGas(tx);
+				return tx.gas || api().eth.estimateGas(tx);
 			})
 			.then(g => {
 				progress({estimated: g});
@@ -116,12 +117,18 @@ function createBonds(options) {
 				return api().pollMethod('parity_checkRequest', signerRequestId);
 			})
 			.then(transactionHash => {
-				progress({signed: transactionHash});
-				return api().pollMethod('eth_getTransactionReceipt', transactionHash, (receipt) => receipt && receipt.blockNumber && !receipt.blockNumber.eq(0));
-			})
-			.then(receipt => {
-				progress(f({confirmed: receipt}));
-				return receipt;
+				if (condition) {
+					progress(f({signed: transactionHash, scheduled: condition}));
+					return {signed: transactionHash, scheduled: condition};
+				} else {
+					progress({signed: transactionHash});
+					return api()
+						.pollMethod('eth_getTransactionReceipt', transactionHash, (receipt) => receipt && receipt.blockNumber && !receipt.blockNumber.eq(0))
+						.then(receipt => {
+							progress(f({confirmed: receipt}));
+							return receipt;
+						});
+				}
 			})
 			.catch(error => {
 				progress({failed: error});
@@ -167,7 +174,9 @@ function createBonds(options) {
 		let toOptions = (addr, method, options, ...args) => {
 			return overlay({to: addr, data: util.abiEncode(method.name, method.inputs.map(f => f.type), args)}, options);
 		};
-		return new Transaction(toOptions.bond(addr, method, options, ...args));
+		// inResolveDepth is 2 to allow for Bonded `condition`values which are
+		// object values in `options`.
+		return new Transaction(new TransformBond(toOptions, [addr, method, options, ...args], [], 0, 2));
 	};
 
     bonds.time = new TimeBond;
@@ -279,6 +288,7 @@ function createBonds(options) {
 	bonds.hashContent = u => new TransformBond(x => api().parity.hashContent(x), [u], [], false);
 	bonds.gasPriceHistogram = new TransformBond(() => api().parity.gasPriceHistogram(), [], [onHeadChanged]).subscriptable();
 	bonds.accountsInfo = new TransformBond(() => api().parity.accountsInfo(), [], [onAccountsChanged]).subscriptable(2);
+	bonds.allAccountsInfo = new TransformBond(() => api().parity.allAccountsInfo(), [], [onAccountsChanged]).subscriptable(2);
 	bonds.hardwareAccountsInfo = new TransformBond(() => api().parity.hardwareAccountsInfo(), [], [onHardwareAccountsChanged]).subscriptable(2);
 	bonds.mode = new TransformBond(() => api().parity.mode(), [], [bonds.height]);
 
