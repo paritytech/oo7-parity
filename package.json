@@ -1,6 +1,6 @@
 {
   "name": "oo7-parity",
-  "version": "0.6.11",
+  "version": "0.6.12",
   "description": "The Parity Bond API",
   "main": "lib/index.js",
   "jsnext:main": "src/index.js",
@@ -11,8 +11,8 @@
   "scripts": {
     "test": "npm run compile && mocha --compilers js:babel-core/register  --reporter spec",
     "compile": "babel --presets es2015 -d lib/ src/",
-    "prepublish": "./prepublish.sh && npm run compile",
-    "postpublish": "./postpublish.sh"
+    "prepublish": "../oo7/prepublish.sh && npm run compile",
+    "postpublish": "../oo7/postpublish.sh"
   },
   "repository": {
     "type": "git",
@@ -32,7 +32,7 @@
   "dependencies": {
     "@parity/api": "^2",
     "bignumber.js": "^4.0.0",
-    "oo7": "^0.5.6"
+    "oo7": "file:../oo7"
   },
   "devDependencies": {
     "babel-cli": "^6.22.2",
