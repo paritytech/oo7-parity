@@ -12,7 +12,13 @@ export function setupBonds(_api = ParityApi) {
 }
 
 function defaultProvider () {
-  return window.ethereum || new ParityApi.Provider.Http('http://localhost:8545');
+  	if(typeof window !== 'undefined' && window.ethereum){	
+  		return window.ethereum;
+  	}else if(typeof ParityApi !=='undefined'){
+  		return new ParityApi.Provider.Http('http://localhost:8545');
+  	}else{
+  		throw 'Could not connect to provider, please check connection';
+  	}
 }
 
 function Bonds (provider = defaultProvider()) {
