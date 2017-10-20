@@ -1,8 +1,7 @@
 import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from 'oo7';
 import BigNumber from 'bignumber.js';
-// For dev-only (use local version not npm)
 // Use ethereumProvider exposed by parity/web3/metamask (Standardization process: https://github.com/ethereum/interfaces/issues/16#issuecomment-299803228 )
-const ethereumProvider = window.ethereum || window.parent.ethereum || new Parity.Api.Provider.Http('/rpc/');
+//const ethereumProvider = window.ethereum || window.parent.ethereum || new Parity.Api.Provider.Http('/rpc/');
 
 import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
 	BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } from './abis.js';
