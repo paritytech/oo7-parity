@@ -30,9 +30,11 @@
   },
   "homepage": "https://github.com/ethcore/oo7-parity#readme",
   "dependencies": {
-    "@parity/api": "^2",
-    "bignumber.js": "^4.0.0",
-    "oo7": "file:../oo7"
+    "bignumber.js":"^4.0.0",
+    "@parity/api": "^2"
+  },
+  "peerDependencies": {
+    "oo7": ">=0.5"
   },
   "devDependencies": {
     "babel-cli": "^6.22.2",
