@@ -1,44 +1,30 @@
 import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from 'oo7';
 import BigNumber from 'bignumber.js';
-const Parity = require('@parity/parity.js');
 
 import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
 	BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } from './abis.js';
 
+import ParityApi from '@parity/api';
+
 // DEPRECATED. TODO: REMOVE
-export function setupBonds(_api = parity.api) {
+export function setupBonds(_api = ParityApi) {
 	return createBonds({ api: _api });
 }
 
-function injectedTransport() {
-	if (typeof(window) !== 'undefined' && typeof(window.parity) !== 'undefined' && window.parity.api.transport._url) {
-		return new Parity.Api.Transport.Http(
-			window.parity.api.transport._url[0] === '/'
-				? window.location.protocol + '//' + window.location.host + window.parity.api.transport._url
-			: window.parity.api.transport._url.contains('://')
-				? window.parity.api.transport._url
-				: window.location.href + window.parity.api.transport._url
-		);
-	}
-	return null;
+function defaultProvider () {
+  	if (typeof window !== 'undefined' && window.ethereum) {	
+  		return window.ethereum;
+  	}
+
+	if (typeof ParityApi !== 'undefined') {
+  		return new ParityApi.Provider.Http('http://localhost:8545');
+  	}
+	
+	throw 'Could not connect to provider, please check connection';
 }
 
-function defaultTransport() {
-	var transport;
-
-	// Check to see if there's already a parity object injected in window.
-	transport = injectedTransport();
-
-	// Fallback to localhost:8545
-	if (!transport) {
-		transport = new Parity.Api.Transport.Http('http://localhost:8545');
-	}
-
-	return transport;
-}
-
-export function Bonds(transport = defaultTransport()) {
-	return createBonds({ api: new Parity.Api(transport) });
+function Bonds (provider = defaultProvider()) {
+	return createBonds({ api: new ParityApi(provider) });
 }
 
 function createBonds(options) {
@@ -48,9 +34,9 @@ function createBonds(options) {
 	// options (particularly the transport option) to be changed dynamically
 	// and the datastructure to be reused.
 	const api = () => options.api;
-	const util = Parity.Api.util;
+	const util = ParityApi.util;
 
-	// Deprecated - remove once all code moved over to avoid parity.api.abi.
+	// Deprecated - remove once all code moved over to avoid ParityApi.abi.
 	if (!api().abi) {
 		api().abi = abiPolyfill();
 	}
@@ -592,16 +578,16 @@ function createBonds(options) {
 	return bonds;
 }
 
-const t = injectedTransport();
-export var options = t ? { api: new Parity.Api(t) } : null;
+const t = defaultProvider();
+export var options = t ? { api: new ParityApi(t) } : null;
 export const bonds = options ? createBonds(options) : null;
 
-export const asciiToHex = Parity.Api.util.asciiToHex;
-export const bytesToHex = Parity.Api.util.bytesToHex;
-export const hexToAscii = Parity.Api.util.hexToAscii;
-export const isAddressValid = h => Bond.instanceOf(h) ? h.map(Parity.Api.util.isAddressValid) : Parity.Api.util.isAddressValid(h);
-export const toChecksumAddress = h => Bond.instanceOf(h) ? h.map(Parity.Api.util.toChecksumAddress) : Parity.Api.util.toChecksumAddress(h);
-export const sha3 = h => Bond.instanceOf(h) ? h.map(Parity.Api.util.sha3) : Parity.Api.util.sha3(h);
+export const asciiToHex = ParityApi.util.asciiToHex;
+export const bytesToHex = ParityApi.util.bytesToHex;
+export const hexToAscii = ParityApi.util.hexToAscii;
+export const isAddressValid = h => Bond.instanceOf(h) ? h.map(ParityApi.util.isAddressValid) : ParityApi.util.isAddressValid(h);
+export const toChecksumAddress = h => Bond.instanceOf(h) ? h.map(ParityApi.util.toChecksumAddress) : ParityApi.util.toChecksumAddress(h);
+export const sha3 = h => Bond.instanceOf(h) ? h.map(ParityApi.util.sha3) : ParityApi.util.sha3(h);
 
 export const isOwned = addr => Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
 export const isNotOwned = addr => Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
