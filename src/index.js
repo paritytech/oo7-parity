@@ -1,28 +1,38 @@
-import {Bond, TimeBond, TransformBond as oo7TransformBond, ReactivePromise} from 'oo7';
-import BigNumber from 'bignumber.js';
-import ParityApi from '@parity/api';
+// (C) Copyright 2016-2017 Parity Technologies (UK) Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//         http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-import { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI,
-	BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } from './abis.js';
+/* global parity */
+/* eslint-disable no-return-assign */
+/* eslint-disable no-proto */
 
-export function asciiToHex(s) {
-	var r = '0x'
-	for (var i = 0; i < s.length; ++i) {
-		r += ('0' + s.charCodeAt(i).toString(16)).substr(-2);
-	}
-	return r;
-}
+const BigNumber = require('bignumber.js');
+const oo7 = require('oo7');
+
+const ParityApi = require('@parity/api');
+
+const { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI, BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } = require('./abis');
 
 function defaultProvider () {
   	if (typeof window !== 'undefined' && window.ethereum) {
   		return window.ethereum;
   	}
 
-	if (typeof ParityApi !== 'undefined') {
-  		return new ParityApi.Provider.Http('http://localhost:8545');
+  	if (typeof window !== 'undefined' && window.parent && window.parent.ethereum) {
+  		return window.parent.ethereum;
   	}
 
-	throw 'Could not connect to provider, please check connection';
+	return new ParityApi.Provider.Http('http://localhost:8545');
 }
 
 function Bonds (provider = defaultProvider()) {
@@ -38,7 +48,7 @@ function createBonds(options) {
 	const api = () => options.api;
 	const util = ParityApi.util;
 
-	class TransformBond extends oo7TransformBond {
+	class TransformBond extends oo7.TransformBond {
 		constructor (f, a = [], d = [], outResolveDepth = 0, resolveDepth = 1, latched = true, mayBeNull = true) {
 			super(f, a, d, outResolveDepth, resolveDepth, latched, mayBeNull, api());
 		}
@@ -53,7 +63,7 @@ function createBonds(options) {
 		}
 	}
 
-	class SubscriptionBond extends Bond {
+	class SubscriptionBond extends oo7.Bond {
 		constructor(module, rpcName, options = []) {
 			super();
 			this.module = module;
@@ -78,7 +88,7 @@ function createBonds(options) {
 		}
 	}
 
-	class Signature extends ReactivePromise {
+	class Signature extends oo7.ReactivePromise {
 		constructor(message, from) {
 			super([message, from], [], ([message, from]) => {
 				api().parity.postSign(from, asciiToHex(message))
@@ -141,7 +151,7 @@ function createBonds(options) {
 			});
 	}
 
-	class Transaction extends ReactivePromise {
+	class Transaction extends oo7.ReactivePromise {
 		constructor(tx) {
 			super([tx], [], ([tx]) => {
 				let progress = this.trigger.bind(this);
@@ -190,10 +200,10 @@ function createBonds(options) {
 			get (receiver, name) {
 				if (typeof(name) === 'string' || typeof(name) === 'number') {
 					return typeof(receiver[name]) !== 'undefined' ? receiver[name] : receiver(name);
-				} else if (typeof(name) === 'symbol' && Bond.knowSymbol(name)) {
-					return receiver(Bond.fromSymbol(name));
+				} else if (typeof(name) === 'symbol' && oo7.Bond.knowSymbol(name)) {
+					return receiver(oo7.Bond.fromSymbol(name));
 				} else {
-					throw `Weird value type to be subscripted by: ${typeof(name)}: ${JSON.stringify(name)}`;
+					throw new Error(`Weird value type to be subscripted by: ${typeof(name)}: ${JSON.stringify(name)}`);
 				}
 			}
 		});
@@ -203,8 +213,10 @@ function createBonds(options) {
 
 	let useSubs = false;
 
+	bonds.time = new oo7.TimeBond;
+
 	if (!useSubs) {
-		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_=>+_), [], [bonds.time]);
+		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time]);
 
 		let onAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
@@ -303,19 +315,19 @@ function createBonds(options) {
 		// ...networking
 		bonds.peers = new TransformBond(() => api().parity.netPeers(), [], [onPeerNetChanged]).subscriptable(2);
 		bonds.enode = new TransformBond(() => api().parity.enode(), [], []);
-		bonds.nodePort = new TransformBond(() => api().parity.netPort().then(_=>+_), [], []);
+		bonds.nodePort = new TransformBond(() => api().parity.netPort().then(_ => +_), [], []);
 		bonds.nodeName = new TransformBond(() => api().parity.nodeName(), [], []);
-		bonds.signerPort = new TransformBond(() => api().parity.signerPort().then(_=>+_), [], []);
-		bonds.dappsPort = new TransformBond(() => api().parity.dappsPort().then(_=>+_), [], []);
+		bonds.signerPort = new TransformBond(() => api().parity.signerPort().then(_ => +_), [], []);
+		bonds.dappsPort = new TransformBond(() => api().parity.dappsPort().then(_ => +_), [], []);
 		bonds.dappsInterface = new TransformBond(() => api().parity.dappsInterface(), [], []);
 
 		// ...transaction queue
-		bonds.nextNonce = new TransformBond(() => api().parity.nextNonce().then(_=>+_), [], [onPendingChanged]);
+		bonds.nextNonce = new TransformBond(() => api().parity.nextNonce().then(_ => +_), [], [onPendingChanged]);
 		bonds.pending = new TransformBond(() => api().parity.pendingTransactions(), [], [onPendingChanged]);
 		bonds.local = new TransformBond(() => api().parity.localTransactions(), [], [onPendingChanged]).subscriptable(3);
 		bonds.future = new TransformBond(() => api().parity.futureTransactions(), [], [onPendingChanged]).subscriptable(2);
 		bonds.pendingStats = new TransformBond(() => api().parity.pendingTransactionsStats(), [], [onPendingChanged]).subscriptable(2);
-		bonds.unsignedCount = new TransformBond(() => api().parity.parity_unsignedTransactionsCount().then(_=>+_), [], [onUnsignedChanged]);
+		bonds.unsignedCount = new TransformBond(() => api().parity.parity_unsignedTransactionsCount().then(_ => +_), [], [onUnsignedChanged]);
 
 		// ...auto-update
 		bonds.releasesInfo = new TransformBond(() => api().parity.releasesInfo(), [], [onAutoUpdateChanged]).subscriptable();
@@ -324,7 +336,7 @@ function createBonds(options) {
 		bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
 
 	} else {
-		bonds.height = new TransformBond(_=>+_, [new SubscriptionBond('eth', 'blockNumber')]).subscriptable();
+		bonds.height = new TransformBond(_ => +_, [new SubscriptionBond('eth', 'blockNumber')]).subscriptable();
 
 		let onAutoUpdateChanged = bonds.height;
 
@@ -360,13 +372,13 @@ function createBonds(options) {
 
 		bonds.blockTransactionCount = (hashOrNumberBond => new TransformBond(
 			hashOrNumber => isNumber(hashOrNumber)
-				? new TransformBond(_=>+_, [new SubscriptionBond('eth', 'getBlockTransactionCountByNumber', [hashOrNumber])])
-				: new TransformBond(_=>+_, [new SubscriptionBond('eth', 'getBlockTransactionCountByHash', [hashOrNumber])]),
+				? new TransformBond(_ => +_, [new SubscriptionBond('eth', 'getBlockTransactionCountByNumber', [hashOrNumber])])
+				: new TransformBond(_ => +_, [new SubscriptionBond('eth', 'getBlockTransactionCountByHash', [hashOrNumber])]),
 			[hashOrNumberBond]));
 		bonds.uncleCount = (hashOrNumberBond => new TransformBond(
 			hashOrNumber => isNumber(hashOrNumber)
-				? new TransformBond(_=>+_, [new SubscriptionBond('eth', 'getUncleCountByBlockNumber', [hashOrNumber])])
-				: new TransformBond(_=>+_, [new SubscriptionBond('eth', 'getUncleCountByBlockHash', [hashOrNumber])]),
+				? new TransformBond(_ => +_, [new SubscriptionBond('eth', 'getUncleCountByBlockNumber', [hashOrNumber])])
+				: new TransformBond(_ => +_, [new SubscriptionBond('eth', 'getUncleCountByBlockHash', [hashOrNumber])]),
 			[hashOrNumberBond]).subscriptable());
 		bonds.uncle = ((hashOrNumberBond, indexBond) => new TransformBond(
 			(hashOrNumber, index) => isNumber(hashOrNumber)
@@ -388,7 +400,7 @@ function createBonds(options) {
 		bonds.clientVersion = new TransformBond(() => api().web3.clientVersion(), [], []);
 
 		// net_
-		bonds.peerCount = new TransformBond(_=>+_, [new SubscriptionBond('net', 'peerCount')]);
+		bonds.peerCount = new TransformBond(_ => +_, [new SubscriptionBond('net', 'peerCount')]);
 		bonds.listening = new SubscriptionBond('net', 'listening');
 		bonds.chainId = new SubscriptionBond('net', 'version');
 
@@ -415,20 +427,20 @@ function createBonds(options) {
 		// ...networking
 		bonds.peers = new SubscriptionBond('parity', 'netPeers').subscriptable(2);
 		bonds.enode = new SubscriptionBond('parity', 'enode');
-		bonds.nodePort = new TransformBond(_=>+_, [new SubscriptionBond('parity', 'netPort')]);
+		bonds.nodePort = new TransformBond(_ => +_, [new SubscriptionBond('parity', 'netPort')]);
 		bonds.nodeName = new SubscriptionBond('parity', 'nodeName');
 		// Where defined ?
-		bonds.signerPort = new TransformBond(() => api().parity.signerPort().then(_=>+_), [], []);
-		bonds.dappsPort = new TransformBond(() => api().parity.dappsPort().then(_=>+_), [], []);
+		bonds.signerPort = new TransformBond(() => api().parity.signerPort().then(_ => +_), [], []);
+		bonds.dappsPort = new TransformBond(() => api().parity.dappsPort().then(_ => +_), [], []);
 		bonds.dappsInterface = new TransformBond(() => api().parity.dappsInterface(), [], []);
 
 		// ...transaction queue
-		bonds.nextNonce = new TransformBond(_=>+_, [new SubscriptionBond('parity', 'nextNonce')]);
+		bonds.nextNonce = new TransformBond(_ => +_, [new SubscriptionBond('parity', 'nextNonce')]);
 		bonds.pending = new SubscriptionBond('parity', 'pendingTransactions').subscriptable();
 		bonds.local = new SubscriptionBond('parity', 'localTransactions').subscriptable(3);
 		bonds.future = new SubscriptionBond('parity', 'futureTransactions').subscriptable(2);
 		bonds.pendingStats = new SubscriptionBond('parity', 'pendingTransactionsStats').subscriptable(2);
-		bonds.unsignedCount = new TransformBond(_=>+_, [new SubscriptionBond('parity', 'unsignedTransactionsCount')]);
+		bonds.unsignedCount = new TransformBond(_ => +_, [new SubscriptionBond('parity', 'unsignedTransactionsCount')]);
 		bonds.requestsToConfirm = new SubscriptionBond('signer', 'requestsToConfirm');
 
 		// ...auto-update
@@ -450,7 +462,7 @@ function createBonds(options) {
 		return api().trace.call(overlay({to: addr, data: data}, options), traceMode, 'latest');
 	};
 
-	class DeployContract extends ReactivePromise {
+	class DeployContract extends oo7.ReactivePromise {
 		constructor(initBond, abiBond, optionsBond) {
 			super([initBond, abiBond, optionsBond, bonds.registry], [], ([init, abi, options, registry]) => {
 				options.data = init;
@@ -483,7 +495,7 @@ function createBonds(options) {
 				let f = function (...args) {
 					var options = args.length === i.inputs.length + 1 ? args.pop() : {};
 					if (args.length != i.inputs.length)
-						throw `Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}.`;
+						throw new Error(`Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}.`);
 					let f = (addr, ...fargs) => debug
 						? traceCall(address, i, args, options)
 						: call(addr, i, fargs, options)
@@ -500,7 +512,7 @@ function createBonds(options) {
 				let expectedInputs = (i.numInputs || i.args.length);
 				var options = args.length === expectedInputs + 1 ? args.pop() : {};
 				if (args.length != expectedInputs)
-					throw `Invalid number of arguments to ${i.name}. Expected ${expectedInputs}, got ${args.length}. ${args}`;
+					throw new Error(`Invalid number of arguments to ${i.name}. Expected ${expectedInputs}, got ${args.length}. ${args}`);
 				let c = abi.find(j => j.name == i.method);
 				let f = (addr, ...fargs) => {
 					let args = i.args.map((v, index) => v === null ? fargs[index] : typeof(v) === 'function' ? v(fargs[index]) : v);
@@ -518,7 +530,7 @@ function createBonds(options) {
 				r[i.name] = function (...args) {
 					var options = args.length === i.inputs.length + 1 ? args.pop() : {};
 					if (args.length !== i.inputs.length)
-						throw `Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}. ${args}`;
+						throw new Error(`Invalid number of arguments to ${i.name}. Expected ${i.inputs.length}, got ${args.length}. ${args}`);
 					return debug
 									? traceCall(address, i, args, options)
 									: post(address, i, args, options).subscriptable();
@@ -536,7 +548,7 @@ function createBonds(options) {
 				if (top) {
 					return v.map(x => prepareIndexEncode(x, t, false));
 				} else {
-					throw 'Invalid type';
+					throw new Error('Invalid type');
 				}
 			}
 			var val;
@@ -546,7 +558,7 @@ function createBonds(options) {
 				val = util.abiEncode(null, [t], [v]);
 			}
 			if (val.length != 66) {
-				throw 'Invalid length';
+				throw new Error('Invalid length');
 			}
 			return val;
 		}
@@ -561,7 +573,7 @@ function createBonds(options) {
 								topics.push(indexed[f.name] ? prepareIndexEncode(indexed[f.name], f.type) : null);
 							}
 							catch (e) {
-								throw `Couldn't encode indexed parameter ${f.name} of type ${f.type} with value ${indexed[f.name]}`;
+								throw new Error(`Couldn't encode indexed parameter ${f.name} of type ${f.type} with value ${indexed[f.name]}`);
 							}
 						});
 						return api().eth.getLogs({
@@ -628,7 +640,7 @@ function createBonds(options) {
 		var ret = [];
 		for (var i = 0; i < +n; ++i) {
 			let id = i;
-			ret.push(Bond.all([
+			ret.push(oo7.Bond.all([
 					bonds.badgereg.badge(id),
 					bonds.badgereg.meta(id, 'IMG'),
 					bonds.badgereg.meta(id, 'CAPTION')
@@ -654,13 +666,13 @@ function createBonds(options) {
 			name: b.name
 		})),
 		[address, bonds.badges], [], 2
-	).map(all => all.filter(_=>_.certified));
+	).map(all => all.filter(_ => _.certified));
 
 	bonds.tokens = new TransformBond(n => {
 		var ret = [];
 		for (var i = 0; i < +n; ++i) {
 			let id = i;
-			ret.push(Bond.all([
+			ret.push(oo7.Bond.all([
 					bonds.tokenreg.token(id),
 					bonds.tokenreg.meta(id, 'IMG'),
 					bonds.tokenreg.meta(id, 'CAPTION')
@@ -690,14 +702,14 @@ function createBonds(options) {
 			caption: b.caption,
 		})),
 		[address, bonds.tokens], [], 2
-	).map(all => all.filter(_=>_.balance.gt(0)));
+	).map(all => all.filter(_ => _.balance.gt(0)));
 
 	bonds.namesOf = address => new TransformBond((reg, addr, accs) => ({
 		owned: accs[addr] ? accs[addr].name : null,
 		registry: reg || null
 	}), [bonds.registry.reverse(address), address, bonds.accountsInfo]);
 
-	bonds.registry.names = Bond.mapAll([bonds.registry.ReverseConfirmed({}, {limit: 100}), bonds.accountsInfo],
+	bonds.registry.names = oo7.Bond.mapAll([bonds.registry.ReverseConfirmed({}, {limit: 100}), bonds.accountsInfo],
 		(reg, info) => {
 			let r = {};
 			Object.keys(info).forEach(k => r[k] = info[k].name);
@@ -712,14 +724,23 @@ const t = defaultProvider();
 export var options = t ? { api: new ParityApi(t) } : null;
 export const bonds = options ? createBonds(options) : null;
 
+// TODO: remove once ParityApi.util.asciiToHex works.
+export function asciiToHex(s) {
+	var r = '0x'
+	for (var i = 0; i < s.length; ++i) {
+		r += ('0' + s.charCodeAt(i).toString(16)).substr(-2);
+	}
+	return r;
+}
+
 export const bytesToHex = ParityApi.util.bytesToHex;
 export const hexToAscii = ParityApi.util.hexToAscii;
-export const isAddressValid = h => Bond.instanceOf(h) ? h.map(ParityApi.util.isAddressValid) : ParityApi.util.isAddressValid(h);
-export const toChecksumAddress = h => Bond.instanceOf(h) ? h.map(ParityApi.util.toChecksumAddress) : ParityApi.util.toChecksumAddress(h);
-export const sha3 = h => Bond.instanceOf(h) ? h.map(ParityApi.util.sha3) : ParityApi.util.sha3(h);
+export const isAddressValid = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.isAddressValid) : ParityApi.util.isAddressValid(h);
+export const toChecksumAddress = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.toChecksumAddress) : ParityApi.util.toChecksumAddress(h);
+export const sha3 = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.sha3) : ParityApi.util.sha3(h);
 
-export const isOwned = addr => Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
-export const isNotOwned = addr => Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
+export const isOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
+export const isNotOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
 
 // Deprecated.
 export { abiPolyfill };
@@ -746,12 +767,12 @@ export function singleton(f) {
     }
 }
 
-export const denominations = [ "wei", "Kwei", "Mwei", "Gwei", "szabo", "finney", "ether", "grand", "Mether", "Gether", "Tether", "Pether", "Eether", "Zether", "Yether", "Nether", "Dether", "Vether", "Uether" ];
+export const denominations = [ 'wei', 'Kwei', 'Mwei', 'Gwei', 'szabo', 'finney', 'ether', 'grand', 'Mether', 'Gether', 'Tether', 'Pether', 'Eether', 'Zether', 'Yether', 'Nether', 'Dether', 'Vether', 'Uether' ];
 
 export function denominationMultiplier(s) {
     let i = denominations.indexOf(s);
     if (i < 0)
-        throw "Invalid denomination";
+        throw new Error('Invalid denomination');
     return (new BigNumber(1000)).pow(i);
 }
 
@@ -793,7 +814,7 @@ export function formatValue(n) {
 }
 
 export function formatValueNoDenom(n) {
-	return `${n.units.toString().replace(/(\d)(?=(\d{3})+$)/g, "$1,")}${n.decimals ? '.' + n.decimals : ''}`;
+	return `${n.units.toString().replace(/(\d)(?=(\d{3})+$)/g, '$1,')}${n.decimals ? '.' + n.decimals : ''}`;
 }
 
 export function formatToExponential(v, n) {
@@ -821,7 +842,7 @@ export function interpretQuantity(s) {
 export function splitValue(a) {
 	var i = 0;
 	var a = new BigNumber('' + a);
-	if (a.gte(new BigNumber("10000000000000000")) && a.lt(new BigNumber("100000000000000000000000")) || a.eq(0))
+	if (a.gte(new BigNumber('10000000000000000')) && a.lt(new BigNumber('100000000000000000000000')) || a.eq(0))
 		i = 6;
 	else
 		for (var aa = a; aa.gte(1000) && i < denominations.length - 1; aa = aa.div(1000))
@@ -840,7 +861,7 @@ export function formatBalance(n) {
 }
 
 export function formatBlockNumber(n) {
-    return '#' + ('' + n).replace(/(\d)(?=(\d{3})+$)/g, "$1,");
+    return '#' + ('' + n).replace(/(\d)(?=(\d{3})+$)/g, '$1,');
 }
 
 export function isNullData(a) {
@@ -859,14 +880,14 @@ export function splitSignature (sig) {
 
 export function removeSigningPrefix (message) {
 	if (!message.startsWith('\x19Ethereum Signed Message:\n')) {
-		throw 'Invalid message - doesn\'t contain security prefix';
+		throw new Error('Invalid message - doesn\'t contain security prefix');
 	}
 	for (var i = 1; i < 6; ++i) {
 		if (message.length == 26 + i + +message.substr(26, i)) {
 			return message.substr(26 + i);
 		}
 	}
-	throw 'Invalid message - invalid security prefix';
+	throw new Error('Invalid message - invalid security prefix');
 };
 
 export function cleanup (value, type = 'bytes32', api = parity.api) {
