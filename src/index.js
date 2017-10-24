@@ -215,12 +215,45 @@ function createBonds(options) {
 
 	function isNumber(n) { return typeof(n) === 'number' || (typeof(n) === 'string' && n.match(/^[0-9]+$/)); }
 
+	// Move over particular string elements to BigNumber.
+	function bignumify(value, heuristic) {
+		if (typeof heuristic === 'undefined') {
+			// simple heuristic
+			if (typeof value === 'string') {
+				let m = value.match(/^"([0-9]+)"$/);
+				if (m) {
+					return new BigNumber(m[1]);
+				}
+			}
+			if (typeof value === 'object') {
+				if (value.constructor.name === 'Array') {
+					value.forEach((item, index) => value[index] = bignumify(item, heuristic));
+				} else {
+					Object.keys(value).forEach(key => value[key] = bignumify(value[key], heuristic));
+				}
+			}
+		}
+		return value;
+	}
+
+	function bignumifyJSONparse (jsonString) {
+		return bignumify(JSON.parse(jsonString));
+	}
+
+	function caching(id) {
+		return {
+			id: 'io.parity/oo7-parity/' + id,
+			stringify: JSON.stringify,
+			parse: bignumifyJSONparse
+		};
+	}
+
 	let useSubs = false;
 
 	bonds.time = new oo7.TimeBond;
 
 	if (!useSubs) {
-		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time], undefined, undefined, {id: 'io.parity/oo7-parity/blockByNumber'});
+		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time], undefined, undefined, caching('blockByNumber'));
 
 		let onAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
@@ -243,11 +276,11 @@ function createBonds(options) {
 			[hashOrNumberBond], [/*onReorg*/]).subscriptable());// TODO: chain reorg that includes number x, if x is a number
 		bonds.blocks = presub(bonds.findBlock);
 		bonds.block = bonds.blockByNumber(bonds.height);	// TODO: DEPRECATE AND REMOVE
-		bonds.head = new TransformBond(() => api().eth.getBlockByNumber('latest'), [], [onHeadChanged], undefined, undefined, undefined/* WON'T WORK WITHOUT BETTER SER/DE {id: 'io.parity/oo7-parity/head'}*/).subscriptable();// TODO: chain reorgs
-		bonds.author = new TransformBond(() => api().eth.coinbase(), [], [onAccountsChanged], undefined, undefined, {id: 'io.parity/oo7-parity/author'});
-		bonds.accounts = new TransformBond(a => a.map(util.toChecksumAddress), [new TransformBond(() => api().eth.accounts(), [], [onAccountsChanged])], [], undefined, undefined, {id: 'io.parity/oo7-parity/accounts'}).subscriptable();
+		bonds.head = new TransformBond(() => api().eth.getBlockByNumber('latest'), [], [onHeadChanged], undefined, undefined, undefined/* WON'T WORK WITHOUT BETTER SER/DE caching('head')*/).subscriptable();// TODO: chain reorgs
+		bonds.author = new TransformBond(() => api().eth.coinbase(), [], [onAccountsChanged], undefined, undefined, caching('author'));
+		bonds.accounts = new TransformBond(a => a.map(util.toChecksumAddress), [new TransformBond(() => api().eth.accounts(), [], [onAccountsChanged])], [], undefined, undefined, caching('accounts')).subscriptable();
 		bonds.defaultAccount = bonds.accounts[0];	// TODO: make this use its subscription
-		bonds.me = new TransformBond(a => a[0], [bonds.accounts], [], undefined, undefined, {id: 'io.parity/oo7-parity/me'});
+		bonds.me = new TransformBond(a => a[0], [bonds.accounts], [], undefined, undefined, caching('me'));
 		bonds.post = tx => new Transaction(tx);
 		bonds.sign = (message, from = bonds.me) => new Signature(message, from);
 
@@ -256,11 +289,11 @@ function createBonds(options) {
 		bonds.nonce = (x => new TransformBond(x => api().eth.getTransactionCount(x).then(_ => +_), [x], [onHeadChanged]));
 		bonds.storageAt = ((x, y) => new TransformBond((x, y) => api().eth.getStorageAt(x, y), [x, y], [onHeadChanged]));
 
-		bonds.syncing = new TransformBond(() => api().eth.syncing(), [], [onSyncingChanged], undefined, undefined, {id: 'io.parity/oo7-parity/syncing'});
-		bonds.hashrate = new TransformBond(() => api().eth.hashrate(), [], [onAuthoringDetailsChanged], undefined, undefined, {id: 'io.parity/oo7-parity/hashrate'});
-		bonds.authoring = new TransformBond(() => api().eth.mining(), [], [onAuthoringDetailsChanged], undefined, undefined, {id: 'io.parity/oo7-parity/authoring'});
-		bonds.ethProtocolVersion = new TransformBond(() => api().eth.protocolVersion(), [], [], undefined, undefined, {id: 'io.parity/oo7-parity/ethProtocolVersion'});
-		bonds.gasPrice = new TransformBond(() => api().eth.gasPrice(), [], [onHeadChanged], undefined, undefined, {id: 'io.parity/oo7-parity/gasPrice'});
+		bonds.syncing = new TransformBond(() => api().eth.syncing(), [], [onSyncingChanged], undefined, undefined, caching('syncing'));
+		bonds.hashrate = new TransformBond(() => api().eth.hashrate(), [], [onAuthoringDetailsChanged], undefined, undefined, caching('hashrate'));
+		bonds.authoring = new TransformBond(() => api().eth.mining(), [], [onAuthoringDetailsChanged], undefined, undefined, caching('authoring'));
+		bonds.ethProtocolVersion = new TransformBond(() => api().eth.protocolVersion(), [], [], undefined, undefined, caching('ethProtocolVersion'));
+		bonds.gasPrice = new TransformBond(() => api().eth.gasPrice(), [], [onHeadChanged], undefined, undefined, caching('gasPrice'));
 		bonds.estimateGas = (x => new TransformBond(x => api().eth.estimateGas(x), [x], [onHeadChanged, onPendingChanged]));
 
 		bonds.blockTransactionCount = (hashOrNumberBond => new TransformBond(
@@ -289,20 +322,20 @@ function createBonds(options) {
 		bonds.receipt = (hashBond => new TransformBond(x => api().eth.getTransactionReceipt(x), [hashBond], []).subscriptable());
 
 		// web3_
-		bonds.clientVersion = new TransformBond(() => api().web3.clientVersion(), [], [], undefined, undefined, {id: 'io.parity/oo7-parity/clientVersion'});
+		bonds.clientVersion = new TransformBond(() => api().web3.clientVersion(), [], [], undefined, undefined, caching('clientVersion'));
 
 		// net_
-		bonds.peerCount = new TransformBond(() => api().net.peerCount().then(_ => +_), [], [onPeerNetChanged], undefined, undefined, {id: 'io.parity/oo7-parity/peerCount'});
-		bonds.listening = new TransformBond(() => api().net.listening(), [], [onPeerNetChanged], undefined, undefined, {id: 'io.parity/oo7-parity/listening'});
-		bonds.chainId = new TransformBond(() => api().net.version(), [], [], undefined, undefined, {id: 'io.parity/oo7-parity/chainId'});
+		bonds.peerCount = new TransformBond(() => api().net.peerCount().then(_ => +_), [], [onPeerNetChanged], undefined, undefined, caching('peerCount'));
+		bonds.listening = new TransformBond(() => api().net.listening(), [], [onPeerNetChanged], undefined, undefined, caching('listening'));
+		bonds.chainId = new TransformBond(() => api().net.version(), [], [], undefined, undefined, caching('chainId'));
 
 		// parity_
 		bonds.hashContent = u => new TransformBond(x => api().parity.hashContent(x), [u], [], false);
-		bonds.gasPriceHistogram = new TransformBond(() => api().parity.gasPriceHistogram(), [], [onHeadChanged], undefined, undefined, {id: 'io.parity/oo7-parity/gasPriceHistogram'}).subscriptable();
-		bonds.accountsInfo = new TransformBond(() => api().parity.accountsInfo(), [], [onAccountsChanged], undefined, undefined, {id: 'io.parity/oo7-parity/accountsInfo'}).subscriptable(2);
-		bonds.allAccountsInfo = new TransformBond(() => api().parity.allAccountsInfo(), [], [onAccountsChanged], undefined, undefined, {id: 'io.parity/oo7-parity/allAccountsInfo'}).subscriptable(2);
-		bonds.hardwareAccountsInfo = new TransformBond(() => api().parity.hardwareAccountsInfo(), [], [onHardwareAccountsChanged], undefined, undefined, {id: 'io.parity/oo7-parity/hardwareAccountsInfo'}).subscriptable(2);
-		bonds.mode = new TransformBond(() => api().parity.mode(), [], [bonds.height], undefined, undefined, {id: 'io.parity/oo7-parity/mode'});
+		bonds.gasPriceHistogram = new TransformBond(() => api().parity.gasPriceHistogram(), [], [onHeadChanged], undefined, undefined, caching('gasPriceHistogram')).subscriptable();
+		bonds.accountsInfo = new TransformBond(() => api().parity.accountsInfo(), [], [onAccountsChanged], undefined, undefined, caching('accountsInfo')).subscriptable(2);
+		bonds.allAccountsInfo = new TransformBond(() => api().parity.allAccountsInfo(), [], [onAccountsChanged], undefined, undefined, caching('allAccountsInfo')).subscriptable(2);
+		bonds.hardwareAccountsInfo = new TransformBond(() => api().parity.hardwareAccountsInfo(), [], [onHardwareAccountsChanged], undefined, undefined, caching('hardwareAccountsInfo')).subscriptable(2);
+		bonds.mode = new TransformBond(() => api().parity.mode(), [], [bonds.height], undefined, undefined, caching('mode'));
 
 		// TODO: more cache IDs.
 
@@ -661,7 +694,7 @@ function createBonds(options) {
 			);
 		}
 		return ret;
-	}, [bonds.badgereg.badgeCount()], [], 1, undefined, {id: 'io.parity/oo7-parity/badges'});
+	}, [bonds.badgereg.badgeCount()], [], 1, undefined, caching('badges'));
 
 	bonds.badgesOf = address => new TransformBond(
 		(addr, bads) => bads.map(b => ({
@@ -695,7 +728,7 @@ function createBonds(options) {
 			);
 		}
 		return ret;
-	}, [bonds.tokenreg.tokenCount()], [], 1, undefined, {id: 'io.parity/oo7-parity/tokens'});
+	}, [bonds.tokenreg.tokenCount()], [], 1, undefined, caching('tokens'));
 
 	bonds.tokensOf = address => new TransformBond(
 		(addr, bads) => bads.map(b => ({
@@ -722,7 +755,7 @@ function createBonds(options) {
 			Object.keys(info).forEach(k => r[k] = info[k].name);
 			reg.forEach(a => r[a.reverse] = bonds.registry.reverse(a.reverse));
 			return r;
-		}, 1, undefined, {id: 'io.parity/oo7-parity/names'})
+		}, 1, undefined, caching('names'))
 
 	return bonds;
 }
