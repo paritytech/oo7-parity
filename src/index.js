@@ -268,15 +268,23 @@ function createBonds(options) {
 
 		// eth_
 		bonds.blockNumber = bonds.height;
-		bonds.blockByNumber = (x => new TransformBond(x => api().eth.getBlockByNumber(x), [x], []).subscriptable());// TODO: chain reorg that includes number x
+		// Example parameterised cached bond. TODO: chain reorg that includes number
+		bonds.blockByNumber = (
+			bondNumber => new TransformBond(	// Outer transform to resolve the param
+				number => new TransformBond(	// Inner to cache based on resolved param
+					() => api().eth.getBlockByNumber(number),
+					[], [], undefined, undefined,
+					caching(`blockByNumber(${number})`)	// Base the cache UUID on the resolved value
+				), [bondNumber], [], 1			// 1 here to ensure it resolves the inner bond
+			).subscriptable()
+		);
 		bonds.blockByHash = (x => new TransformBond(x => api().eth.getBlockByHash(x), [x]).subscriptable());
 		bonds.findBlock = (hashOrNumberBond => new TransformBond(hashOrNumber => isNumber(hashOrNumber)
 			? api().eth.getBlockByNumber(hashOrNumber)
 			: api().eth.getBlockByHash(hashOrNumber),
 			[hashOrNumberBond], [/*onReorg*/]).subscriptable());// TODO: chain reorg that includes number x, if x is a number
 		bonds.blocks = presub(bonds.findBlock);
-		bonds.block = bonds.blockByNumber(bonds.height);	// TODO: DEPRECATE AND REMOVE
-		bonds.head = new TransformBond(() => api().eth.getBlockByNumber('latest'), [], [onHeadChanged], undefined, undefined, undefined/* WON'T WORK WITHOUT BETTER SER/DE caching('head')*/).subscriptable();// TODO: chain reorgs
+		bonds.head = new TransformBond(() => api().eth.getBlockByNumber('latest'), [], [onHeadChanged], undefined, undefined, caching('head')).subscriptable();// TODO: chain reorgs
 		bonds.author = new TransformBond(() => api().eth.coinbase(), [], [onAccountsChanged], undefined, undefined, caching('author'));
 		bonds.accounts = new TransformBond(a => a.map(util.toChecksumAddress), [new TransformBond(() => api().eth.accounts(), [], [onAccountsChanged])], [], undefined, undefined, caching('accounts')).subscriptable();
 		bonds.defaultAccount = bonds.accounts[0];	// TODO: make this use its subscription
