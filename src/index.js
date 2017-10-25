@@ -24,7 +24,7 @@ const ParityApi = require('@parity/api');
 
 const { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI, BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } = require('./abis');
 
-function defaultProvider () {
+function defaultProvider() {
 	if (typeof window !== 'undefined' && window.ethereum) {
 		return window.ethereum;
 	}
@@ -39,8 +39,49 @@ function defaultProvider () {
 	return new ParityApi.Provider.Http('http://localhost:8545');
 }
 
-function Bonds (provider = defaultProvider()) {
-	return createBonds({ api: new ParityApi(provider) });
+function Bonds(provider = defaultProvider()) {
+	// return createBonds({ api: new ParityApi(provider) });
+	return new ParityBond({ api: new ParityApi(provider) });
+}
+
+type Options = {
+	api: ParityApi
+}
+
+type Utilities = {
+	abiDecode:           Function,
+  abiEncode:           Function,
+  abiUnencode:         Function,
+  abiSignature:        Function,
+  cleanupValue:        Function,
+  isAddressValid:      Function,
+  isArray:             Function,
+  isFunction:          Function,
+  isHex:               Function,
+  isInstanceOf:        Function,
+  isString:            Function,
+  bytesToHex:          Function,
+  hexToAscii:          Function,
+  hexToBytes:          Function,
+  asciiToHex:          Function,
+  createIdentityImg:   Function,
+  decodeCallData:      Function,
+  decodeMethodInput:   Function,
+  encodeMethodCallAbi: Function,
+  methodToAbi:         Function,
+  fromWei:             Function,
+  toChecksumAddress:   Function,
+  toWei:               Function,
+  sha3:                Function
+}
+
+class ParityBond {
+	api:  ParityApi;
+	util: Utilities;
+	constructor(options: Options) {
+		this.api = options.api;
+		this.util = ParityApi.util;
+	}
 }
 
 function createBonds(options) {
@@ -51,71 +92,6 @@ function createBonds(options) {
 	// and the datastructure to be reused.
 	const api = () => options.api;
 	const util = ParityApi.util;
-
-	class TransformBond extends oo7.TransformBond {
-		constructor (f, a = [], d = [], outResolveDepth = 0, resolveDepth = 1, latched = true, mayBeNull = true) {
-			super(f, a, d, outResolveDepth, resolveDepth, latched, mayBeNull, api());
-		}
-		map (f, outResolveDepth = 0, resolveDepth = 1) {
-	        return new TransformBond(f, [this], [], outResolveDepth, resolveDepth);
-	    }
-		sub (name, outResolveDepth = 0, resolveDepth = 1) {
-			return new TransformBond((r, n) => r[n], [this, name], [], outResolveDepth, resolveDepth);
-		}
-		static all(list) {
-			return new TransformBond((...args) => args, list);
-		}
-	}
-
-	class SubscriptionBond extends oo7.Bond {
-		constructor(module, rpcName, options = []) {
-			super();
-			this.module = module;
-			this.rpcName = rpcName;
-			this.options = [(_,n) => this.trigger(n), ...options];
-		}
-		initialise () {
-			// promise instead of id because if a dependency triggers finalise() before id's promise is resolved the unsubscribing would call with undefined
-			this.subscription = api().pubsub[this.module][this.rpcName](...this.options);
-		}
-		finalise () {
-			this.subscription.then(id => api().pubsub.unsubscribe([id]));
-		}
-		map (f, outResolveDepth = 0, resolveDepth = 1) {
-			return new TransformBond(f, [this], [], outResolveDepth, resolveDepth);
-		}
-		sub (name, outResolveDepth = 0, resolveDepth = 1) {
-			return new TransformBond((r, n) => r[n], [this, name], [], outResolveDepth, resolveDepth);
-		}
-		static all(list) {
-			return new TransformBond((...args) => args, list);
-		}
-	}
-
-	class Signature extends oo7.ReactivePromise {
-		constructor(message, from) {
-			super([message, from], [], ([message, from]) => {
-				api().parity.postSign(from, asciiToHex(message))
-					.then(signerRequestId => {
-						this.trigger({requested: signerRequestId});
-				    	return api().pollMethod('parity_checkRequest', signerRequestId);
-				    })
-				    .then(signature => {
-						this.trigger({
-							signed: splitSignature(signature)
-						});
-					})
-					.catch(error => {
-						console.error(error);
-						this.trigger({failed: error});
-					});
-			}, false);
-			this.then(_ => null);
-		}
-		isDone(s) {
-			return !!s.failed || !!s.signed;
-		}
-	}
 
 	function transactionPromise(tx, progress, f) {
 		progress({initialising: null});
@@ -739,7 +715,7 @@ const bonds = options ? createBonds(options) : null;
 
 const denominations = [ 'wei', 'Kwei', 'Mwei', 'Gwei', 'szabo', 'finney', 'ether', 'grand', 'Mether', 'Gether', 'Tether', 'Pether', 'Eether', 'Zether', 'Yether', 'Nether', 'Dether', 'Vether', 'Uether' ];
 
-function denominationMultiplier(s) {
+function denominationMultiplier(s: number) {
   let i = denominations.indexOf(s);
   if (i < 0)
     throw new Error('Invalid denomination');
@@ -756,24 +732,24 @@ function combineValue(v) {
 	return new BigNumber(n).mul(d);
 }
 
-function defDenom(v, d) {
-	if (v.denom === null) {
-		v.denom = d;
-	}
-	return v;
-}
-
-function formatValue(n) {
-	return `${formatValueNoDenom(n)} ${denominations[n.denom]}`;
-}
-
-function formatValueNoDenom(n) {
-	return `${n.units.toString().replace(/(\d)(?=(\d{3})+$)/g, '$1,')}${n.decimals ? '.' + n.decimals : ''}`;
-}
-
-function formatToExponential(v, n) {
-	return new BigNumber(v).toExponential(4);
-}
+// function defDenom(v, d) {
+// 	if (v.denom === null) {
+// 		v.denom = d;
+// 	}
+// 	return v;
+// }
+//
+// function formatValue(n) {
+// 	return `${formatValueNoDenom(n)} ${denominations[n.denom]}`;
+// }
+//
+// function formatValueNoDenom(n) {
+// 	return `${n.units.toString().replace(/(\d)(?=(\d{3})+$)/g, '$1,')}${n.decimals ? '.' + n.decimals : ''}`;
+// }
+//
+// function formatToExponential(v, n) {
+// 	return new BigNumber(v).toExponential(4);
+// }
 
 function interpretQuantity(s) {
     try {
@@ -808,21 +784,21 @@ function splitValue(a) {
 	return {base: a, denom: i};
 }
 
-function formatBalance(n) {
-	let a = splitValue(n);
-//	let b = Math.floor(a.base * 1000) / 1000;
-	return `${a.base} ${denominations[a.denom]}`;
-}
+// function formatBalance(n) {
+// 	let a = splitValue(n);
+// //	let b = Math.floor(a.base * 1000) / 1000;
+// 	return `${a.base} ${denominations[a.denom]}`;
+// }
 
-function formatBlockNumber(n) {
+function formatBlockNumber(n: number) {
     return '#' + ('' + n).replace(/(\d)(?=(\d{3})+$)/g, '$1,');
 }
 
-function isNullData(a) {
+function isNullData(a: string | any) {
 	return !a || typeof(a) !== 'string' || a.match(/^(0x)?0+$/) !== null;
 }
 
-function splitSignature (sig) {
+function splitSignature (sig: string) {
 	if ((sig.substr(2, 2) === '1b' || sig.substr(2, 2) === '1c') && (sig.substr(66, 2) !== '1b' && sig.substr(66, 2) !== '1c')) {
 		// vrs
 		return [sig.substr(0, 4), `0x${sig.substr(4, 64)}`, `0x${sig.substr(68, 64)}`];
@@ -830,9 +806,9 @@ function splitSignature (sig) {
 		// rsv
 		return [`0x${sig.substr(130, 2)}`, `0x${sig.substr(2, 64)}`, `0x${sig.substr(66, 64)}`];
 	}
-};
+}
 
-function removeSigningPrefix (message) {
+function removeSigningPrefix (message: string) {
 	if (!message.startsWith('\x19Ethereum Signed Message:\n')) {
 		throw new Error('Invalid message - doesn\'t contain security prefix');
 	}
@@ -844,7 +820,7 @@ function removeSigningPrefix (message) {
 	throw new Error('Invalid message - invalid security prefix');
 };
 
-function cleanup (value, type = 'bytes32', api = parity.api) {
+function cleanup (value: Array<any> | string | number, type: string = 'bytes32', api: ParityApi = parity.api) {
 	// TODO: make work with arbitrary depth arrays
 	if (value instanceof Array && type.match(/bytes[0-9]+/)) {
 		// figure out if it's an ASCII string hiding in there:

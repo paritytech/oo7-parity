@@ -13,38 +13,52 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-const asciiToHex = ParityApi.util.asciiToHex;
-const bytesToHex = ParityApi.util.bytesToHex;
-const hexToAscii = ParityApi.util.hexToAscii;
+import { Bond } from 'oo7';
+import {
+  // abiDecode,
+  // abiEncode,
+  // abiUnencode,
+  // abiSignature,
+  // cleanupValue,
+  isAddressValid as ParityIsAddressValid,
+  // isArray,
+  // isFunction,
+  // isHex,
+  // isInstanceOf,
+  // isString,
+  bytesToHex as ParityBytesToHex,
+  hexToAscii as ParityHexToAscii,
+  // hexToBytes,
+  asciiToHex as ParityAsciiToHex,
+  // createIdentityImg,
+  // decodeCallData,
+  // decodeMethodInput,
+  // encodeMethodCallAbi,
+  // methodToAbi,
+  // fromWei,
+  toChecksumAddress as ParityToChecksumAddress,
+  // toWei,
+  sha3 as ParitySha3
+} from '@parity/api/util';
 
-const isAddressValid = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.isAddressValid) : ParityApi.util.isAddressValid(h);
-const toChecksumAddress = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.toChecksumAddress) : ParityApi.util.toChecksumAddress(h);
-const sha3 = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.sha3) : ParityApi.util.sha3(h);
+export const asciiToHex = ParityAsciiToHex;
+export const bytesToHex = ParityBytesToHex;
+export const hexToAscii = ParityHexToAscii;
 
-const isOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
-const isNotOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
+export const isAddressValid = (h: Bond | any) => Bond.instanceOf(h) ? h.map(ParityIsAddressValid) : ParityIsAddressValid(h);
+export const toChecksumAddress = (h: Bond | any) => Bond.instanceOf(h) ? h.map(ParityToChecksumAddress) : ParityToChecksumAddress(h);
+export const sha3 = (h: Bond | any) => Bond.instanceOf(h) ? h.map(ParitySha3) : ParitySha3(h);
 
-const capitalizeFirstLetter = s => s.charAt(0).toUpperCase() + s.slice(1);
+export const isOwned = (addr: string) => Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
+export const isNotOwned = (addr: string) => Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
 
-function singleton(f) {
+export const capitalizeFirstLetter = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+export function singleton(f: Function) {
   let instance = null;
   return function() {
     if (instance === null)
       instance = f();
     return instance;
   }
-}
-
-function interpretRender(s, defaultDenom = 6) {
-    try {
-      let m = s.toLowerCase().match(/([0-9,]+)(\.([0-9]*))? *([a-zA-Z]+)?/);
-			let di = m[4] ? denominations.indexOf(m[4]) : defaultDenom;
-			if (di === -1)
-				return null;
-			let n = (m[1].replace(',', '').replace(/^0*/, '')) || '0';
-			let d = (m[3] || '').replace(/0*$/, '');
-			return { denom: di, units: n, decimals: d, origNum: m[1] + (m[2] || ''), origDenom: m[4] || '' };
-    } catch (e) {
-      return null;
-    }
 }
