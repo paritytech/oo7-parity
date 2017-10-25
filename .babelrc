@@ -1,3 +1,11 @@
 {
-  "presets": ["env"]
+  "minified": true,
+  "sourceMap": true,
+  "comments": false,
+  "presets": ["flow", "env"],
+  "plugins": [
+    "transform-class-properties",
+    "transform-es2015-modules-commonjs",
+    "add-module-exports"
+  ]
 }
