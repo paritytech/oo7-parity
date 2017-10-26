@@ -804,6 +804,12 @@ const sha3 = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.sha3) : ParityAp
 const isOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
 const isNotOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
 
+class BondProxy extends oo7.BondCache.Proxy {
+	constructor (useBonds = bonds) {
+		super ('io.parity/oo7-parity/', useBonds);
+	}
+}
+
 ////
 // Parity Utilities
 
@@ -970,7 +976,7 @@ function cleanup (value, type = 'bytes32', api = parity.api) {
 
 module.exports = {
 	// Bonds stuff
-	abiPolyfill, options, bonds, Bonds, createBonds, fromUuid,
+	abiPolyfill, options, bonds, Bonds, createBonds, fromUuid, BondProxy,
 
 	// Util functions
 	asciiToHex, bytesToHex, hexToAscii, isAddressValid, toChecksumAddress, sha3,
