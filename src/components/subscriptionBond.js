@@ -14,10 +14,10 @@
 // limitations under the License.
 
 import { Bond as oo7Bond } from 'oo7';
-import TransformBond from './';
+import { TransformBond as TB } from './';
 
-class SubscriptionBond extends oo7Bond {
-  constructor(module: string, rpcName: string, options: Array<any> = [], api: Function) {
+export default (api: Function, TransformBond: TB) => class SubscriptionBond extends oo7Bond {
+  constructor(module: string, rpcName: string, options: Array<any> = []) {
     super();
     this.module = module;
     this.rpcName = rpcName;
@@ -40,5 +40,3 @@ class SubscriptionBond extends oo7Bond {
     return new TransformBond((...args) => args, list);
   }
 }
-
-export default SubscriptionBond;

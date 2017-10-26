@@ -14,14 +14,16 @@
 // limitations under the License.
 
 import { ReactivePromise as oo7ReactivePromise } from 'oo7';
-import { asciiToHex } from '@parity/api/util';
+import { asciiToHex }                            from '@parity/api/util';
 
 type Sig = {
-  failed?: string,
-  signed?: string
+  failed?:    string,
+  signed?:    string,
+  confirmed?: string
 }
 
-class Signature extends oo7ReactivePromise {
+export default (api: Function) => class Signature extends oo7ReactivePromise {
+  trigger: Function;
   constructor(message: string, from: string) {
     super([message, from], [], ([message, from]) => {
       api().parity.postSign(from, asciiToHex(message))
@@ -45,5 +47,3 @@ class Signature extends oo7ReactivePromise {
     return !!signature.failed || !!signature.signed;
   }
 }
-
-export default Signature;

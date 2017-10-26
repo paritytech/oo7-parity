@@ -17,12 +17,19 @@
 /* eslint-disable no-return-assign */
 /* eslint-disable no-proto */
 
-const BigNumber = require('bignumber.js');
-const oo7 = require('oo7');
+import BigNumber from 'bignumber.js';
+import oo7       from 'oo7';
+import ParityApi from '@parity/api';
 
-const ParityApi = require('@parity/api');
+import {
+	abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI,
+	OperationsABI, BadgeRegABI, TokenRegABI, BadgeABI, TokenABI
+} from './abis';
 
-const { abiPolyfill, RegistryABI, RegistryExtras, GitHubHintABI, OperationsABI, BadgeRegABI, TokenRegABI, BadgeABI, TokenABI } = require('./abis');
+import {
+	DenominationsFactory, SignatureFactory, SubscriptionBondFactory,
+	TransactionFactory, TransformBondFactory
+} from './components';
 
 function defaultProvider() {
 	if (typeof window !== 'undefined' && window.ethereum) {
@@ -33,13 +40,12 @@ function defaultProvider() {
 		if (typeof window !== 'undefined' && window.parent && window.parent.ethereum) {
 			return window.parent.ethereum;
 		}
-	}
-	catch (e) {}
+	} catch (e) {}
 
 	return new ParityApi.Provider.Http('http://localhost:8545');
 }
 
-function Bonds(provider = defaultProvider()) {
+function Bonds(provider: ParityApi = defaultProvider()) {
 	// return createBonds({ api: new ParityApi(provider) });
 	return new ParityBond({ api: new ParityApi(provider) });
 }
@@ -76,95 +82,63 @@ type Utilities = {
 }
 
 class ParityBond {
-	api:  ParityApi;
-	util: Utilities;
-	constructor(options: Options) {
-		this.api = options.api;
+	api:              ParityApi;
+	util:             Utilities;
+	Denominations:    DenominationsFactory;
+	Signature:        SignatureFactory;
+	SubscriptionBond: SubscriptionBondFactory;
+	Transaction:      TransactionFactory
+	TransformBond:    TransformBondFactory;
+	time:             oo7.TimeBond;
+	constructor(opt: Options) {
+		this.api  = opt.api;
 		this.util = ParityApi.util;
-	}
-}
 
-function createBonds(options) {
-	var bonds = {};
-
-	// We only ever use api() at call-time of this function; this allows the
-	// options (particularly the transport option) to be changed dynamically
-	// and the datastructure to be reused.
-	const api = () => options.api;
-	const util = ParityApi.util;
-
-	function transactionPromise(tx, progress, f) {
-		progress({initialising: null});
-		let condition = tx.condition || null;
-		Promise.all([api().eth.accounts(), api().eth.gasPrice()])
-			.then(([a, p]) => {
-				progress({estimating: null});
-				tx.from = tx.from || a[0];
-				tx.gasPrice = tx.gasPrice || p;
-				return tx.gas || api().eth.estimateGas(tx);
-			})
-			.then(g => {
-				progress({estimated: g});
-				tx.gas = tx.gas || g;
-				return api().parity.postTransaction(tx);
-			})
-			.then(signerRequestId => {
-				progress({requested: signerRequestId});
-				return api().pollMethod('parity_checkRequest', signerRequestId);
-			})
-			.then(transactionHash => {
-				if (condition) {
-					progress(f({signed: transactionHash, scheduled: condition}));
-					return {signed: transactionHash, scheduled: condition};
-				} else {
-					progress({signed: transactionHash});
-					return api()
-						.pollMethod('eth_getTransactionReceipt', transactionHash, (receipt) => receipt && receipt.blockNumber && !receipt.blockNumber.eq(0))
-						.then(receipt => {
-							progress(f({confirmed: receipt}));
-							return receipt;
-						});
-				}
-			})
-			.catch(error => {
-				progress({failed: error});
-			});
+		this.Denominations    = DenominationsFactory(this.api);
+		this.Signature        = SignatureFactory(this.api);
+		this.SubscriptionBond = SubscriptionBondFactory(this.api);
+		this.Transaction      = TransactionFactory(this.api);
+		this.TransformBond    = TransformBondFactory(this.api);
+		this.time             = new oo7.TimeBond;
 	}
 
-	class Transaction extends oo7.ReactivePromise {
-		constructor(tx) {
-			super([tx], [], ([tx]) => {
-				let progress = this.trigger.bind(this);
-				transactionPromise(tx, progress, _ => _);
-			}, false);
-			this.then(_ => null);
-		}
-		isDone(s) {
-			return !!(s.failed || s.confirmed);
-		}
+	overlay(base: Object, top: Object) {
+		return { ...base, ...top };
 	}
 
-	function overlay(base, top) {
-		Object.keys(top).forEach(k => {
-			base[k] = top[k];
-		});
-		return base;
-	}
-
-	function memoized(f) {
-		var memo;
-		return function() {
+	memoized(f: Function) {
+		let memo;
+		return () => {
 			if (memo === undefined)
 				memo = f();
 			return memo;
 		};
 	}
 
-	function call(addr, method, args, options) {
-		let data = util.abiEncode(method.name, method.inputs.map(f => f.type), args);
-		let decode = d => util.abiDecode(method.outputs.map(f => f.type), d);
-		return api().eth.call(overlay({to: addr, data: data}, options)).then(decode);
-	};
+	call(addr: string, method: Function, args: Array<any>, options: Object) {
+		let data = this.util.abiEncode(method.name, method.inputs.map(f => f.type), args);
+		let decode = d => this.util.abiDecode(method.outputs.map(f => f.type), d);
+		return this.api().eth.call(this.overlay({to: addr, data: data}, options)).then(decode);
+	}
+
+	post(addr: string, method: Function, args: Array<any>, options: Object) {
+		let toOptions = (addr, method, options, ...args) => {
+			return this.overlay({to: addr, data: this.util.abiEncode(method.name, method.inputs.map(f => f.type), args)}, options);
+		};
+		// inResolveDepth is 2 to allow for Bonded `condition`values which are
+		// object values in `options`.
+		return new this.Transaction(new this.TransformBond(toOptions, [addr, method, options, ...args], [], 0, 2));
+	}
+}
+
+function createBonds(options: Options) {
+	let bonds = {};
+
+	// We only ever use api() at call-time of this function; this allows the
+	// options (particularly the transport option) to be changed dynamically
+	// and the datastructure to be reused.
+	const api = () => options.api;
+	const util = ParityApi.util;
 
 	function post(addr, method, args, options) {
 		let toOptions = (addr, method, options, ...args) => {
@@ -192,8 +166,6 @@ function createBonds(options) {
 	function isNumber(n) { return typeof(n) === 'number' || (typeof(n) === 'string' && n.match(/^[0-9]+$/)); }
 
 	let useSubs = false;
-
-	bonds.time = new oo7.TimeBond;
 
 	if (!useSubs) {
 		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time]);
@@ -443,27 +415,6 @@ function createBonds(options) {
 		return api().trace.call(overlay({to: addr, data: data}, options), traceMode, 'latest');
 	};
 
-	class DeployContract extends oo7.ReactivePromise {
-		constructor(initBond, abiBond, optionsBond) {
-			super([initBond, abiBond, optionsBond, bonds.registry], [], ([init, abi, options, registry]) => {
-				options.data = init;
-				delete options.to;
-				let progress = this.trigger.bind(this);
-				transactionPromise(options, progress, status => {
-					if (status.confirmed) {
-						status.deployed = bonds.makeContract(status.confirmed.contractAddress, abi, options.extras || []);
-					}
-					return status;
-				});
-				// TODO: consider allowing registry of the contract here.
-			}, false);
-			this.then(_ => null);
-		}
-		isDone(s) {
-			return !!(s.failed || s.confirmed);
-		}
-	}
-
 	bonds.deployContract = function(init, abi, options = {}) {
 		return new DeployContract(init, abi, options);
 	}
@@ -707,30 +658,30 @@ function createBonds(options) {
 
 
 const t = defaultProvider();
-var options = t ? { api: new ParityApi(t) } : null;
+let options = t ? { api: new ParityApi(t) } : null;
 const bonds = options ? createBonds(options) : null;
 
 ////
 // Parity Utilities
 
-const denominations = [ 'wei', 'Kwei', 'Mwei', 'Gwei', 'szabo', 'finney', 'ether', 'grand', 'Mether', 'Gether', 'Tether', 'Pether', 'Eether', 'Zether', 'Yether', 'Nether', 'Dether', 'Vether', 'Uether' ];
+// const denominations = [ 'wei', 'Kwei', 'Mwei', 'Gwei', 'szabo', 'finney', 'ether', 'grand', 'Mether', 'Gether', 'Tether', 'Pether', 'Eether', 'Zether', 'Yether', 'Nether', 'Dether', 'Vether', 'Uether' ];
 
-function denominationMultiplier(s: number) {
-  let i = denominations.indexOf(s);
-  if (i < 0)
-    throw new Error('Invalid denomination');
-  return (new BigNumber(1000)).pow(i);
-}
-
-function combineValue(v) {
-	let d = (new BigNumber(1000)).pow(v.denom);
-	let n = v.units;
-	if (v.decimals) {
-		n += v.decimals;
-		d = d.div((new BigNumber(10)).pow(v.decimals.length));
-	}
-	return new BigNumber(n).mul(d);
-}
+// function denominationMultiplier(s: number) {
+//   let i = denominations.indexOf(s);
+//   if (i < 0)
+//     throw new Error('Invalid denomination');
+//   return (new BigNumber(1000)).pow(i);
+// }
+//
+// function combineValue(v) {
+// 	let d = (new BigNumber(1000)).pow(v.denom);
+// 	let n = v.units;
+// 	if (v.decimals) {
+// 		n += v.decimals;
+// 		d = d.div((new BigNumber(10)).pow(v.decimals.length));
+// 	}
+// 	return new BigNumber(n).mul(d);
+// }
 
 // function defDenom(v, d) {
 // 	if (v.denom === null) {
@@ -752,21 +703,20 @@ function combineValue(v) {
 // }
 
 function interpretQuantity(s) {
-    try {
-        let m = s.toLowerCase().match(/([0-9,]+)(\.([0-9]*))? *([a-zA-Z]+)?/);
-        let d = denominationMultiplier(m[4] || 'ether');
-        let n = +m[1].replace(',', '');
+  try {
+    let m = s.toLowerCase().match(/([0-9,]+)(\.([0-9]*))? *([a-zA-Z]+)?/);
+    let d = denominationMultiplier(m[4] || 'ether');
+    let n = +m[1].replace(',', '');
 		if (m[2]) {
 			n += m[3];
 			for (let i = 0; i < m[3].length; ++i) {
-	            d = d.div(10);
-	        }
+	      d = d.div(10);
+	    }
 		}
-        return new BigNumber(n).mul(d);
-    }
-    catch (e) {
-        return null;
-    }
+	  return new BigNumber(n).mul(d);
+  } catch (e) {
+    return null;
+  }
 }
 
 function splitValue(a) {
@@ -818,9 +768,9 @@ function removeSigningPrefix (message: string) {
 		}
 	}
 	throw new Error('Invalid message - invalid security prefix');
-};
+}
 
-function cleanup (value: Array<any> | string | number, type: string = 'bytes32', api: ParityApi = parity.api) {
+function cleanup (value: Array<any> | string | number, type: string = 'bytes32', api: ParityApi = window.parity.api) {
 	// TODO: make work with arbitrary depth arrays
 	if (value instanceof Array && type.match(/bytes[0-9]+/)) {
 		// figure out if it's an ASCII string hiding in there:

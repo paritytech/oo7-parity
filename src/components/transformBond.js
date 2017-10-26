@@ -15,8 +15,8 @@
 
 import { TransformBond as oo7TransformBond } from 'oo7';
 
-class TransformBond extends oo7TransformBond {
-  constructor (f: Function, a?: Array<any> = [], d?: Array<any> = [], outResolveDepth?: number = 0, resolveDepth?: number = 1, latched?: bool = true, mayBeNull?: bool = true, context?: Object, api?: Function) {
+export default (api: Function) => class TransformBond extends oo7TransformBond {
+  constructor (f: Function, a?: Array<any> = [], d?: Array<any> = [], outResolveDepth?: number = 0, resolveDepth?: number = 1, latched?: bool = true, mayBeNull?: bool = true, context?: Object) {
     // super(f, a, d, outResolveDepth, resolveDepth, latched, mayBeNull, api());
     super(f, a, d, outResolveDepth, resolveDepth, latched, mayBeNull, api());
   }
@@ -30,5 +30,3 @@ class TransformBond extends oo7TransformBond {
     return new TransformBond((...args) => args, list);
   }
 }
-
-export default TransformBond;
