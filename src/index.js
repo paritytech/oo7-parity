@@ -790,7 +790,7 @@ function createBonds(options) {
 		}, 1, undefined, caching('names'))
 
 	bonds.createProxy = singleton(function () {
-		return new oo7.BondProxy(options.prefix, fromUuid);
+		return new oo7.BondProxy(options.prefix, bonds.fromUuid);
 	});
 
 	return bonds;
