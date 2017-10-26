@@ -225,7 +225,7 @@ function createBonds(options) {
 					return new BigNumber(m[1]);
 				}
 			}
-			if (typeof value === 'object') {
+			if (typeof value === 'object' && value !== null) {
 				if (value.constructor.name === 'Array') {
 					value.forEach((item, index) => value[index] = bignumify(item, heuristic));
 				} else {
@@ -495,6 +495,28 @@ function createBonds(options) {
 		bonds.versionInfo = new SubscriptionBond('parity', 'versionInfo').subscriptable();
 		bonds.consensusCapability = new SubscriptionBond('parity', 'consensusCapability').subscriptable();
 		bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
+	}
+
+	function fromUuid (uuid) {
+		if (uuid.startsWith('io.parity/oo7-parity/')) {
+			let name = uuid.substr(21);
+			if (Bond.instanceOf(bonds[name])) {
+				return bonds[name];
+			}
+			let matched = /^(.*)\((.*)\)$/.match(name);
+			if (matched) {
+				let name = matched[1];
+				let args = matched[2].split(',');
+				// TODO: PROBABLY NOT SAFE. USE A WHITELIST.
+				if (typeof bonds[matched[1]] === 'function') {
+					let b = bonds[matched[1]](args);
+					if (Bond.instanceOf(b)) {
+						return b;
+					}
+				}
+			}
+		}
+		return null;
 	}
 
 	// trace TODO: Implement contract object with new trace_many feature
@@ -948,7 +970,7 @@ function cleanup (value, type = 'bytes32', api = parity.api) {
 
 module.exports = {
 	// Bonds stuff
-	abiPolyfill, options, bonds, Bonds, createBonds,
+	abiPolyfill, options, bonds, Bonds, createBonds, fromUuid,
 
 	// Util functions
 	asciiToHex, bytesToHex, hexToAscii, isAddressValid, toChecksumAddress, sha3,

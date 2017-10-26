@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "test": "mocha --reporter spec",
-    "prepare": "../oo7/prepublish.sh",
+    "prepublishOnly": "../oo7/prepublish.sh",
     "postpublish": "../oo7/postpublish.sh"
   },
   "repository": {
