@@ -43,7 +43,7 @@ function Bonds (provider = defaultProvider()) {
 	return createBonds({ api: new ParityApi(provider) });
 }
 
-const DEFUALT_PREFIX = 'io.parity/oo7-parity/';
+const DEFAULT_PREFIX = 'io.parity/oo7-parity/';
 
 function createBonds(options) {
 	var bonds = {};
@@ -499,8 +499,8 @@ function createBonds(options) {
 		bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
 	}
 
-	function fromUuid (uuid) {
-		if (uuid.startsWith('io.parity/oo7-parity/')) {
+	bonds.fromUuid = function (uuid) {
+		if (uuid.startsWith(options.prefix)) {
 			let name = uuid.substr(21);
 			if (Bond.instanceOf(bonds[name])) {
 				return bonds[name];
@@ -522,8 +522,8 @@ function createBonds(options) {
 	}
 
 	// trace TODO: Implement contract object with new trace_many feature
-	bonds.replayTx = ((x,whatTrace) => new TransformBond((x,whatTrace) => api().trace.replayTransaction(x, whatTrace), [x, whatTrace], []).subscriptable());
-	bonds.callTx = ((x,whatTrace,blockNumber) => new TransformBond((x,whatTrace,blockNumber) => api().trace.call(x, whatTrace, blockNumber), [x, whatTrace, blockNumber], []).subscriptable());
+	bonds.replayTx = ((x, whatTrace) => new TransformBond((x, whatTrace) => api().trace.replayTransaction(x, whatTrace), [x, whatTrace], []).subscriptable());
+	bonds.callTx = ((x, whatTrace, blockNumber) => new TransformBond((x, whatTrace, blockNumber) => api().trace.call(x, whatTrace, blockNumber), [x, whatTrace, blockNumber], []).subscriptable());
 
 	function traceCall (addr, method, args, options) {
 		let data = util.abiEncode(method.name, method.inputs.map(f => f.type), args);
@@ -789,6 +789,10 @@ function createBonds(options) {
 			return r;
 		}, 1, undefined, caching('names'))
 
+	bonds.createProxy = singleton(function () {
+		return new oo7.BondProxy(options.prefix, fromUuid);
+	});
+
 	return bonds;
 }
 
@@ -805,12 +809,6 @@ const sha3 = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.sha3) : ParityAp
 
 const isOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
 const isNotOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
-
-class BondProxy extends oo7.BondProxy {
-	constructor (useBonds = bonds) {
-		super (options.prefix, useBonds);
-	}
-}
 
 ////
 // Parity Utilities
@@ -978,7 +976,7 @@ function cleanup (value, type = 'bytes32', api = parity.api) {
 
 module.exports = {
 	// Bonds stuff
-	abiPolyfill, options, bonds, Bonds, createBonds, fromUuid, BondProxy,
+	abiPolyfill, options, bonds, Bonds, createBonds,
 
 	// Util functions
 	asciiToHex, bytesToHex, hexToAscii, isAddressValid, toChecksumAddress, sha3,
