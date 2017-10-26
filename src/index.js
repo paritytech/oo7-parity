@@ -43,6 +43,8 @@ function Bonds (provider = defaultProvider()) {
 	return createBonds({ api: new ParityApi(provider) });
 }
 
+const DEFUALT_PREFIX = 'io.parity/oo7-parity/';
+
 function createBonds(options) {
 	var bonds = {};
 
@@ -242,7 +244,7 @@ function createBonds(options) {
 
 	function caching(id) {
 		return {
-			id: 'io.parity/oo7-parity/' + id,
+			id: (options.prefix || '???') + id,
 			stringify: JSON.stringify,
 			parse: bignumifyJSONparse
 		};
@@ -791,7 +793,7 @@ function createBonds(options) {
 }
 
 const t = defaultProvider();
-var options = t ? { api: new ParityApi(t) } : null;
+var options = t ? { api: new ParityApi(t), prefix: DEFAULT_PREFIX } : null;
 const bonds = options ? createBonds(options) : null;
 
 const asciiToHex = ParityApi.util.asciiToHex;
@@ -804,9 +806,9 @@ const sha3 = h => oo7.Bond.instanceOf(h) ? h.map(ParityApi.util.sha3) : ParityAp
 const isOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) !== -1);
 const isNotOwned = addr => oo7.Bond.mapAll([addr, bonds.accounts], (a, as) => as.indexOf(a) === -1);
 
-class BondProxy extends oo7.BondCache.Proxy {
+class BondProxy extends oo7.BondProxy {
 	constructor (useBonds = bonds) {
-		super ('io.parity/oo7-parity/', useBonds);
+		super (options.prefix, useBonds);
 	}
 }
 
