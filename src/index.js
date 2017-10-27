@@ -271,8 +271,6 @@ function createBonds(options) {
 		}
 	}
 
-	const identity = _ => _;
-
 	function prettifyValueFromRpcTransform(type) {
 		if (type === 'n') {
 			// Comes in as a BigNumber - but it's only small - convert
@@ -604,7 +602,7 @@ function createBonds(options) {
 					console.warn(`Registered param types for ${name} differ in number to args passed`, types, args);
 					return null;
 				}
-				args = args.map((a, i) => deuuidify(a, types[i]));
+				args = args.map((a, i) => deuuidify(types[i], a));
 				console.log('Function UUID', name, args);
 				// TODO: PROBABLY NOT SAFE. USE A WHITELIST.
 				if (typeof bonds[name] === 'function') {
