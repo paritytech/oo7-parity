@@ -831,7 +831,7 @@ function createBonds(options) {
 
 	bonds.badgesOf = address => new TransformBond(
 		(addr, bads) => bads.map(b => ({
-			certified: makeContract(b.addr, BadgeABI).certified(addr),
+			certified: bonds.makeContract(b.addr, BadgeABI).certified(addr),
 			badge: b.badge,
 			id: b.id,
 			img: b.img,
@@ -865,7 +865,7 @@ function createBonds(options) {
 
 	bonds.tokensOf = address => new TransformBond(
 		(addr, bads) => bads.map(b => ({
-			balance: makeContract(b.addr, TokenABI).balanceOf(addr),
+			balance: bonds.makeContract(b.addr, TokenABI).balanceOf(addr),
 			token: b.token,
 			id: b.id,
 			name: b.name,
