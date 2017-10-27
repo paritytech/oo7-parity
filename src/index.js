@@ -416,6 +416,9 @@ function createBonds(options) {
 				[hashOrNumberBond, indexOrNullBond], [/*onReorg*/]).subscriptable());
 		bonds.receipt = (hashBond => new TransformBond(x => api().eth.getTransactionReceipt(x), [hashBond], []).subscriptable());
 
+
+		// STILL TODO:
+
 		// web3_
 		bonds.clientVersion = new TransformBond(() => api().web3.clientVersion(), [], [], undefined, undefined, caching('clientVersion'));
 
