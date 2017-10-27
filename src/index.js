@@ -289,11 +289,12 @@ function createBonds(options) {
 	}
 
 	function bondifiedDeps(descriptor) {
-		return
+		return (
 			descriptor === 't' ? [bonds.time]
 			: descriptor === 'h' ? [bonds.height]
 			: descriptor === null ? []
-			: [bonds.time];
+			: [bonds.time]
+		);
 	}
 
 	function declare(name, rpc = name, params = [], deps = [], subs = 0, xform = null) {
@@ -337,11 +338,11 @@ function createBonds(options) {
 //		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time], undefined, undefined, caching('height'));
 //		declare('height', 'blockNumber', [], [bonds.time], 0, _ => +_);
 
-		apisInfo.forEach(api =>
+		apisInfo.forEach(api => {
 			declare(api.name, api.rpc, api.params,
 				bondifiedDeps(api.deps), subsFromValue(api.out),
-				prettifyValueFromRpcTransform(api.out))
-		);
+				prettifyValueFromRpcTransform(api.out));
+		});
 
 		let onAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
