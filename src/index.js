@@ -822,7 +822,7 @@ function createBonds(options) {
 					name,
 					img,
 					caption,
-					badge: bonds.makeContract(addr, BadgeABI)
+					addr
 				}))
 			);
 		}
@@ -856,7 +856,7 @@ function createBonds(options) {
 					name,
 					img,
 					caption,
-					token: bonds.makeContract(addr, TokenABI)
+					addr
 				}))
 			);
 		}
@@ -865,7 +865,7 @@ function createBonds(options) {
 
 	bonds.tokensOf = address => new TransformBond(
 		(addr, bads) => bads.map(b => ({
-			balance: b.token.balanceOf(addr),
+			balance: makeContract(b.addr, TokenABI).balanceOf(addr),
 			token: b.token,
 			id: b.id,
 			name: b.name,
