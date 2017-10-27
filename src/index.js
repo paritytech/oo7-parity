@@ -242,7 +242,7 @@ function createBonds(options) {
 		return bignumify(JSON.parse(jsonString));
 	}
 
-	function caching(id) {
+	function caching (id) {
 		return {
 			id: (options.prefix || '???') + id,
 			stringify: JSON.stringify,
@@ -254,8 +254,56 @@ function createBonds(options) {
 
 	bonds.time = new oo7.TimeBond;
 
+	let paramTypes = {};
+
+	function uuidify (type, value) {
+		return '' + value;
+	}
+
+	function deuuidify (type, string) {
+		if (type === 'N') {
+			// convert from BigNumber
+			return new BigNumber(string);
+		} else if (type === 'h') {
+			// a hash - nothing to do.
+			return string;
+		} else {
+			// automatic.
+			return !string.startsWith('0x') && Number.isFinite(Number.parseInt(string)) ? new BigNumber(string) : string;
+		}
+	}
+
+	const identity = _ => _;
+
+	function declare(name, rpc = name, params = [], deps = [], subs = 0, xform = null) {
+		let b;
+		let getRpc = (typeof rpc === 'function'
+			? rpc
+			: typeof rpc === 'string'
+			? api()['eth'][rpc]
+			: api()[rpc[0]][rpc[1]]
+		);
+		if (params.length === 0) {
+			b = new TransformBond(
+				xform ? () => getRpc().then(xform) : getRpc,
+				[], deps, undefined, undefined,
+				caching(name)
+			).subscriptable(subs);
+		} else {
+			b = (...bonded) => new TransformBond(	// Outer transform to resolve the param
+				(...resolved) => new TransformBond(	// Inner to cache based on resolved param
+					xform ? () => getRpc(...resolved).then(xform) : () => getRpc(...resolved),
+					[], [], undefined, undefined,
+					caching(`${name}(${resolved.map((v, i) => uuidify(params[i], v)).join(',')})`)	// Base the cache UUID on the resolved value
+				), bonded, [], 1			// 1 here to ensure it resolves the inner bond
+			).subscriptable(subs);
+		}
+		paramTypes[name] = params;
+		bonds[name] = b;
+	}
+
 	if (!useSubs) {
-		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time], undefined, undefined, caching('height'));
+		declare('height', 'blockNumber', [], [bonds.time], 0, _ => +_);
 
 		let onAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
@@ -269,18 +317,11 @@ function createBonds(options) {
 		let onAutoUpdateChanged = bonds.height;
 
 		// eth_
-		bonds.blockNumber = bonds.height;
-		// Example parameterised cached bond. TODO: chain reorg that includes number
-		bonds.blockByNumber = (
-			bondNumber => new TransformBond(	// Outer transform to resolve the param
-				number => new TransformBond(	// Inner to cache based on resolved param
-					() => api().eth.getBlockByNumber(number),
-					[], [], undefined, undefined,
-					caching(`blockByNumber(${number})`)	// Base the cache UUID on the resolved value
-				), [bondNumber], [], 1			// 1 here to ensure it resolves the inner bond
-			).subscriptable()
-		);
-		bonds.blockByHash = (x => new TransformBond(x => api().eth.getBlockByHash(x), [x]).subscriptable());
+		bonds.blockNumber = bonds.height;	// just a synonym.
+
+		declare('blockByNumber', 'getBlockByNumber', ['N'], [], 1); // TODO: should reevaluate on chain reorg that includes number
+		declare('blockByHash', 'getBlockByHash', ['h'], [], 1);
+
 		bonds.findBlock = (hashOrNumberBond => new TransformBond(hashOrNumber => isNumber(hashOrNumber)
 			? api().eth.getBlockByNumber(hashOrNumber)
 			: api().eth.getBlockByHash(hashOrNumber),
@@ -510,7 +551,13 @@ function createBonds(options) {
 				let name = matched[1];
 				let args = matched[2].split(',');
 				// TODO: Type heuristcs here.
-				args.forEach((a, i) => { args[i] = Number.isFinite(Number.parseInt(a)) ? new BigNumber(a) : a; });
+
+				let types = paramTypes[name];
+				if (types.length != args.length) {
+					console.warn(`Registered param types for ${name} differ in number to args passed`, types, args);
+					return null;
+				}
+				args = args.map((a, i) => deuuidify(a, types[i]));
 				console.log('Function UUID', name, args);
 				// TODO: PROBABLY NOT SAFE. USE A WHITELIST.
 				if (typeof bonds[name] === 'function') {
