@@ -505,7 +505,7 @@ function createBonds(options) {
 			if (oo7.Bond.instanceOf(bonds[name])) {
 				return bonds[name];
 			}
-			let matched = /^(.*)\((.*)\)$/.match(name);
+			let matched = name.match(/^(.*)\((.*)\)$/);
 			if (matched) {
 				let name = matched[1];
 				let args = matched[2].split(',');
