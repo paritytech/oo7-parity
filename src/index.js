@@ -502,7 +502,7 @@ function createBonds(options) {
 	bonds.fromUuid = function (uuid) {
 		if (uuid.startsWith(options.prefix)) {
 			let name = uuid.substr(21);
-			if (Bond.instanceOf(bonds[name])) {
+			if (oo7.Bond.instanceOf(bonds[name])) {
 				return bonds[name];
 			}
 			let matched = /^(.*)\((.*)\)$/.match(name);
