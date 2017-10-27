@@ -252,8 +252,6 @@ function createBonds(options) {
 
 	let useSubs = false;
 
-	bonds.time = new oo7.TimeBond;
-
 	let paramTypes = {};
 
 	function uuidify (type, value) {
@@ -275,14 +273,38 @@ function createBonds(options) {
 
 	const identity = _ => _;
 
+	function prettifyValueFromRpcTransform(type) {
+		if (type === 'n') {
+			// Comes in as a BigNumber - but it's only small - convert
+			return v => +v;
+		}
+		return null;
+	}
+
+	function subsFromValue(type) {
+		if (type === 'block') {
+			return 1;
+		}
+		return 0;
+	}
+
+	function bondifiedDeps(descriptor) {
+		return
+			descriptor === 't' ? [bonds.time]
+			: descriptor === 'h' ? [bonds.height]
+			: descriptor === null ? []
+			: [bonds.time];
+	}
+
 	function declare(name, rpc = name, params = [], deps = [], subs = 0, xform = null) {
 		let b;
 		let getRpc = (typeof rpc === 'function'
 			? rpc
 			: typeof rpc === 'string'
-			? api()['eth'][rpc]
-			: api()[rpc[0]][rpc[1]]
+			? api()['eth'][rpc].bind(api()['eth'][rpc])
+			: api()[rpc[0]][rpc[1]].bind(api()[rpc[0]][rpc[1]])
 		);
+
 		if (params.length === 0) {
 			b = new TransformBond(
 				xform ? () => getRpc().then(xform) : getRpc,
@@ -302,8 +324,24 @@ function createBonds(options) {
 		bonds[name] = b;
 	}
 
+	let apisInfo = [
+		{ name: 'height', rpc: 'blockNumber', deps: 't', out: 'n' },
+		{ name: 'blockByNumber', rpc: 'getBlockByNumber', params: ['N'], deps: 'h', out: 'block' },// TODO: should reevaluate on chain reorg that includes number
+		{ name: 'blockByHash', rpc: 'getBlockByHash', params: ['h'], deps: 'h', out: 'block' },
+		{ name: 'syncing', deps: 'syncing', out: 'b' }
+	];
+
+	bonds.time = new oo7.TimeBond;
+
 	if (!useSubs) {
-		declare('height', 'blockNumber', [], [bonds.time], 0, _ => +_);
+//		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time], undefined, undefined, caching('height'));
+//		declare('height', 'blockNumber', [], [bonds.time], 0, _ => +_);
+
+		apisInfo.forEach(api =>
+			declare(api.name, api.rpc, api.params,
+				bondifiedDeps(api.deps), subsFromValue(api.out),
+				prettifyValueFromRpcTransform(api.out))
+		);
 
 		let onAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
@@ -319,13 +357,11 @@ function createBonds(options) {
 		// eth_
 		bonds.blockNumber = bonds.height;	// just a synonym.
 
-		declare('blockByNumber', 'getBlockByNumber', ['N'], [], 1); // TODO: should reevaluate on chain reorg that includes number
-		declare('blockByHash', 'getBlockByHash', ['h'], [], 1);
-
 		bonds.findBlock = (hashOrNumberBond => new TransformBond(hashOrNumber => isNumber(hashOrNumber)
 			? api().eth.getBlockByNumber(hashOrNumber)
 			: api().eth.getBlockByHash(hashOrNumber),
 			[hashOrNumberBond], [/*onReorg*/]).subscriptable());// TODO: chain reorg that includes number x, if x is a number
+
 		bonds.blocks = presub(bonds.findBlock);
 		bonds.head = new TransformBond(() => api().eth.getBlockByNumber('latest'), [], [onHeadChanged], undefined, undefined, caching('head')).subscriptable();// TODO: chain reorgs
 		bonds.author = new TransformBond(() => api().eth.coinbase(), [], [onAccountsChanged], undefined, undefined, caching('author'));
