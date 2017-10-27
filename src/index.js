@@ -255,7 +255,7 @@ function createBonds(options) {
 	bonds.time = new oo7.TimeBond;
 
 	if (!useSubs) {
-		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time], undefined, undefined, caching('blockByNumber'));
+		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time], undefined, undefined, caching('height'));
 
 		let onAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
@@ -509,13 +509,22 @@ function createBonds(options) {
 			if (matched) {
 				let name = matched[1];
 				let args = matched[2].split(',');
+				// TODO: Type heuristcs here.
+				args.forEach((a, i) => { args[i] = Number.parseInt(a).isFinite() ? new BigNumber(a) : a; });
+				console.log('Function UUID', name, args);
 				// TODO: PROBABLY NOT SAFE. USE A WHITELIST.
-				if (typeof bonds[matched[1]] === 'function') {
-					let b = bonds[matched[1]](args);
+				if (typeof bonds[name] === 'function') {
+					let b = bonds[name].apply(bonds, args);
 					if (Bond.instanceOf(b)) {
 						return b;
+					} else {
+						console.warn(`bond.${name}() is not a Bond`);
 					}
+				} else {
+					console.warn(`${name} is not a function`);
 				}
+			} else {
+				console.warn('Unknown UUID', name);
 			}
 		}
 		return null;
