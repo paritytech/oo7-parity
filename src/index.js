@@ -515,7 +515,7 @@ function createBonds(options) {
 				// TODO: PROBABLY NOT SAFE. USE A WHITELIST.
 				if (typeof bonds[name] === 'function') {
 					let b = bonds[name].apply(bonds, args);
-					if (Bond.instanceOf(b)) {
+					if (oo7.Bond.instanceOf(b)) {
 						return b;
 					} else {
 						console.warn(`bond.${name}() is not a Bond`);
