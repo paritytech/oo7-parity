@@ -301,8 +301,8 @@ function createBonds(options) {
 		let getRpc = (typeof rpc === 'function'
 			? rpc
 			: typeof rpc === 'string'
-			? api()['eth'][rpc].bind(api()['eth'][rpc])
-			: api()[rpc[0]][rpc[1]].bind(api()[rpc[0]][rpc[1]])
+			? api()['eth'][rpc].bind(api())
+			: api()[rpc[0]][rpc[1]].bind(api())
 		);
 
 		if (params.length === 0) {
