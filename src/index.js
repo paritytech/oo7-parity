@@ -510,7 +510,7 @@ function createBonds(options) {
 				let name = matched[1];
 				let args = matched[2].split(',');
 				// TODO: Type heuristcs here.
-				args.forEach((a, i) => { args[i] = Number.parseInt(a).isFinite() ? new BigNumber(a) : a; });
+				args.forEach((a, i) => { args[i] = Number.isFinite(Number.parseInt(a)) ? new BigNumber(a) : a; });
 				console.log('Function UUID', name, args);
 				// TODO: PROBABLY NOT SAFE. USE A WHITELIST.
 				if (typeof bonds[name] === 'function') {
