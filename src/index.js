@@ -262,8 +262,8 @@ function createBonds(options) {
 		if (type === 'N') {
 			// convert from BigNumber
 			return new BigNumber(string);
-		} else if (type === 'h') {
-			// a hash - nothing to do.
+		} else if (type === 'h' || type === 'd') {
+			// a hash/data - nothing to do.
 			return string;
 		} else {
 			// automatic.
@@ -278,12 +278,20 @@ function createBonds(options) {
 			// Comes in as a BigNumber - but it's only small - convert
 			return v => +v;
 		}
+		else if (type === 'account') {
+			return util.toChecksumAddress;
+		}
+		else if (typeof type === 'string' && type.endsWith('[]')) {
+			return v => v.map(prettifyValueFromRpcTransform(type.substr(0, type.length - 2)));
+		}
 		return null;
 	}
 
 	function subsFromValue(type) {
 		if (type === 'block') {
 			return 1;
+		} else if (typeof type === 'string' && type.endsWith('[]')) {
+			return subsFromValue(type.substr(0, type.length - 2)) + 1;
 		}
 		return 0;
 	}
@@ -325,29 +333,41 @@ function createBonds(options) {
 		bonds[name] = b;
 	}
 
+	// order is important for the first one.
 	let apisInfo = [
 		{ name: 'height', rpc: 'blockNumber', deps: 't', out: 'n' },
 		{ name: 'blockByNumber', rpc: 'getBlockByNumber', params: ['N'], deps: 'h', out: 'block' },// TODO: should reevaluate on chain reorg that includes number
 		{ name: 'blockByHash', rpc: 'getBlockByHash', params: ['h'], deps: 'h', out: 'block' },
-		{ name: 'syncing', deps: 'syncing', out: 'b' }
+		{ name: 'head', rpc: () => api().eth.getBlockByNumber('latest'), deps: 'h', out: 'block' },// TODO: chain reorgs
+		{ name: 'author', rpc: 'coinbase', deps: 'accounts' },
+		{ name: 'accounts', deps: 'accounts', out: 'account[]' },
+
+		{ name: 'balance', rpc: 'getBalance', params: ['account'], deps: 'h', out: 'N' },
+		{ name: 'code', rpc: 'getCode', params: ['account'], deps: 'h', out: 'd' },
+		{ name: 'nonce', rpc: 'getTransactionCount', params: ['account'], deps: 'h', out: 'n' },
+		{ name: 'storageAt', rpc: 'getStorageAt', params: ['account', 'h'], deps: 'h', out: 'N' },
+
+		{ name: 'syncing', deps: 'syncing', out: 'b' },
+		{ name: 'hashrate', deps: 'authoring', out: 'n' },
+		{ name: 'authoring', rpc: 'mining', deps: 'authoring', out: 'b' },
+		{ name: 'ethProtocolVersion', rpc: 'protocolVersion' },
+		{ name: 'gasPrice', deps: 'h', out: 'N' }
 	];
 
 	bonds.time = new oo7.TimeBond;
 
 	if (!useSubs) {
-//		bonds.height = new TransformBond(() => api().eth.blockNumber().then(_ => +_), [], [bonds.time], undefined, undefined, caching('height'));
-//		declare('height', 'blockNumber', [], [bonds.time], 0, _ => +_);
-
+		// The regular ones.
 		apisInfo.forEach(api => {
 			declare(api.name, api.rpc, api.params,
 				bondifiedDeps(api.deps), subsFromValue(api.out),
 				prettifyValueFromRpcTransform(api.out));
 		});
 
+		// Some useful aliases
 		let onAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHeadChanged = bonds.height;	// TODO: more accurate notification
-	//	let onReorg = undefined;	// TODO make more accurate.
 		let onSyncingChanged = bonds.time;
 		let onAuthoringDetailsChanged = bonds.time;
 		let onPeerNetChanged = bonds.time; // TODO: more accurate notification
@@ -355,33 +375,20 @@ function createBonds(options) {
 		let onUnsignedChanged = bonds.time; // TODO: more accurate notification
 		let onAutoUpdateChanged = bonds.height;
 
+		// The rest...
+
 		// eth_
 		bonds.blockNumber = bonds.height;	// just a synonym.
-
 		bonds.findBlock = (hashOrNumberBond => new TransformBond(hashOrNumber => isNumber(hashOrNumber)
 			? api().eth.getBlockByNumber(hashOrNumber)
 			: api().eth.getBlockByHash(hashOrNumber),
 			[hashOrNumberBond], [/*onReorg*/]).subscriptable());// TODO: chain reorg that includes number x, if x is a number
-
 		bonds.blocks = presub(bonds.findBlock);
-		bonds.head = new TransformBond(() => api().eth.getBlockByNumber('latest'), [], [onHeadChanged], undefined, undefined, caching('head')).subscriptable();// TODO: chain reorgs
-		bonds.author = new TransformBond(() => api().eth.coinbase(), [], [onAccountsChanged], undefined, undefined, caching('author'));
-		bonds.accounts = new TransformBond(a => a.map(util.toChecksumAddress), [new TransformBond(() => api().eth.accounts(), [], [onAccountsChanged])], [], undefined, undefined, caching('accounts')).subscriptable();
-		bonds.defaultAccount = bonds.accounts[0];	// TODO: make this use its subscription
-		bonds.me = new TransformBond(a => a[0], [bonds.accounts], [], undefined, undefined, caching('me'));
+		bonds.defaultAccount = bonds.me = bonds.accounts[0];	// TODO: make this use its subscription
 		bonds.post = tx => new Transaction(tx);
 		bonds.sign = (message, from = bonds.me) => new Signature(message, from);
 
-		bonds.balance = (x => new TransformBond(x => api().eth.getBalance(x), [x], [onHeadChanged]));
-		bonds.code = (x => new TransformBond(x => api().eth.getCode(x), [x], [onHeadChanged]));
-		bonds.nonce = (x => new TransformBond(x => api().eth.getTransactionCount(x).then(_ => +_), [x], [onHeadChanged]));
-		bonds.storageAt = ((x, y) => new TransformBond((x, y) => api().eth.getStorageAt(x, y), [x, y], [onHeadChanged]));
-
-		bonds.syncing = new TransformBond(() => api().eth.syncing(), [], [onSyncingChanged], undefined, undefined, caching('syncing'));
-		bonds.hashrate = new TransformBond(() => api().eth.hashrate(), [], [onAuthoringDetailsChanged], undefined, undefined, caching('hashrate'));
-		bonds.authoring = new TransformBond(() => api().eth.mining(), [], [onAuthoringDetailsChanged], undefined, undefined, caching('authoring'));
-		bonds.ethProtocolVersion = new TransformBond(() => api().eth.protocolVersion(), [], [], undefined, undefined, caching('ethProtocolVersion'));
-		bonds.gasPrice = new TransformBond(() => api().eth.gasPrice(), [], [onHeadChanged], undefined, undefined, caching('gasPrice'));
+		// not really cacheable.
 		bonds.estimateGas = (x => new TransformBond(x => api().eth.estimateGas(x), [x], [onHeadChanged, onPendingChanged]));
 
 		bonds.blockTransactionCount = (hashOrNumberBond => new TransformBond(
