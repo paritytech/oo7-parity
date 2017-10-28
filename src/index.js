@@ -36,7 +36,11 @@ function defaultProvider () {
 	}
 	catch (e) {}
 
-	return new ParityApi.Provider.Http('http://localhost:8545');
+	// TODO: figure this out from the environment.
+
+	return new ParityApi.Provider.Ws('ws://localhost:8546');
+
+//	return new ParityApi.Provider.Http('http://localhost:8545');
 }
 
 function Bonds (provider = defaultProvider()) {
@@ -70,15 +74,21 @@ function createBonds(options) {
 	}
 
 	class SubscriptionBond extends oo7.Bond {
-		constructor(module, rpcName, options = []) {
-			super();
+		constructor (module, rpcName, args = [], cache = { id: null, stringify: JSON.stringify, parse: JSON.parse }, xform = null, mayBeNull) {
+			super(mayBeNull, cache);
+
 			this.module = module;
 			this.rpcName = rpcName;
-			this.options = [(_,n) => this.trigger(n), ...options];
+			this.args = [
+				xform
+					? (_, n) => this.trigger(xform(n))
+					: (_, n) => this.trigger(n),
+				...args
+			];
 		}
 		initialise () {
 			// promise instead of id because if a dependency triggers finalise() before id's promise is resolved the unsubscribing would call with undefined
-			this.subscription = api().pubsub[this.module][this.rpcName](...this.options);
+			this.subscription = api().pubsub[this.module][this.rpcName](...this.args);
 		}
 		finalise () {
 			this.subscription.then(id => api().pubsub.unsubscribe([id]));
@@ -250,7 +260,15 @@ function createBonds(options) {
 		};
 	}
 
-	let useSubs = false;
+	let useSubs = typeof options.pubsub === 'boolean' ? options.pubsub: (() => {
+		try {
+			options.api.pubsub
+			return true;
+		}
+		catch (e) {
+			return false;
+		}
+	})();
 
 	let paramTypes = {};
 
@@ -280,7 +298,8 @@ function createBonds(options) {
 			return util.toChecksumAddress;
 		}
 		else if (typeof type === 'string' && type.endsWith('[]')) {
-			return v => v.map(prettifyValueFromRpcTransform(type.substr(0, type.length - 2)));
+			let f = prettifyValueFromRpcTransform(type.substr(0, type.length - 2));
+			return f ? v => v.map(f) : null;
 		}
 		return null;
 	}
@@ -288,8 +307,16 @@ function createBonds(options) {
 	function subsFromValue(type) {
 		if (type === 'block') {
 			return 1;
+		} else if (type === 'accountsInfo') {
+			return 2;
+		} else if (type === 'address' || type === 'tx') {
+			return 0;
 		} else if (typeof type === 'string' && type.endsWith('[]')) {
 			return subsFromValue(type.substr(0, type.length - 2)) + 1;
+		} else if (typeof type === 'string') {
+			// Some type that we're not famililar with - assume it's a
+			// single-depth structure unless it's a single-letter (simple)
+			return type.length === 1 ? 0 : 1;
 		}
 		return 0;
 	}
@@ -303,65 +330,115 @@ function createBonds(options) {
 		);
 	}
 
-	function declare(name, rpc = name, params = [], deps = [], subs = 0, xform = null) {
+	function declarePolling(name, rpc = name, args = [], params = [], deps = [], subs = 0, xform = null) {
 		let b;
-		let getRpc = (typeof rpc === 'function'
-			? rpc
-			: typeof rpc === 'string'
+		let getRpc = (typeof rpc === 'string'
 			? api()['eth'][rpc].bind(api())
 			: api()[rpc[0]][rpc[1]].bind(api())
 		);
 
 		if (params.length === 0) {
 			b = new TransformBond(
-				xform ? () => getRpc().then(xform) : getRpc,
+				xform
+					? () => getRpc(...args).then(xform)
+					: () => getRpc(...args),
 				[], deps, undefined, undefined,
 				caching(name)
 			).subscriptable(subs);
 		} else {
 			b = (...bonded) => new TransformBond(	// Outer transform to resolve the param
 				(...resolved) => new TransformBond(	// Inner to cache based on resolved param
-					xform ? () => getRpc(...resolved).then(xform) : () => getRpc(...resolved),
+					xform ? () => getRpc(...args, ...resolved).then(xform) : () => getRpc(...resolved),
 					[], [], undefined, undefined,
 					caching(`${name}(${resolved.map((v, i) => uuidify(params[i], v)).join(',')})`)	// Base the cache UUID on the resolved value
 				), bonded, [], 1			// 1 here to ensure it resolves the inner bond
 			).subscriptable(subs);
 		}
+
 		paramTypes[name] = params;
 		bonds[name] = b;
 	}
 
+	function declarePubsub(name, rpc = name, args = [], params = [], deps = [], subs = 0, xform = null, cacheEnabled = true) {
+		let b;
+		let moduleRpcName = [
+			typeof rpc === 'string' ? 'eth' : rpc[0],
+			typeof rpc === 'string' ? rpc : rpc[1]
+		];
+
+		if (params.length === 0) {
+			b = new SubscriptionBond(
+				...moduleRpcName, args, caching(name), xform, true
+			).subscriptable(subs);
+		} else {
+			b = (...bonded) => new TransformBond(	// Outer transform to resolve the param
+				(...resolved) => new SubscriptionBond(	// Inner to cache based on resolved param
+					...moduleRpcName,
+					[...args, ...resolved],
+					// Base the cache UUID on the resolved value
+					cacheEnabled
+						? caching(`${name}(${resolved.map((v, i) => uuidify(params[i], v)).join(',')})`)
+						: null,
+					xform,
+					true
+				), bonded, [], 1			// 1 here to ensure it resolves the inner bond
+			).subscriptable(subs);
+		}
+
+		paramTypes[name] = params;
+		bonds[name] = b;
+	}
+
+	let declare = useSubs ? declarePubsub : declarePolling;
+
 	// order is important for the first one.
 	let apisInfo = [
 		{ name: 'height', rpc: 'blockNumber', deps: 't', out: 'n' },
-		{ name: 'blockByNumber', rpc: 'getBlockByNumber', params: ['N'], deps: 'h', out: 'block' },// TODO: should reevaluate on chain reorg that includes number
+		{ name: 'blockByNumber', rpc: 'getBlockByNumber', params: ['N'], deps: 'h', out: 'block' },// TODO: chain reorg that includes number
 		{ name: 'blockByHash', rpc: 'getBlockByHash', params: ['h'], deps: 'h', out: 'block' },
-		{ name: 'head', rpc: () => api().eth.getBlockByNumber('latest'), deps: 'h', out: 'block' },// TODO: chain reorgs
+		{ name: 'head', rpc: 'getBlockByNumber', args: ['latest'], deps: 'h', out: 'block' },// TODO: chain reorgs
 		{ name: 'author', rpc: 'coinbase', deps: 'accounts' },
-		{ name: 'accounts', deps: 'accounts', out: 'account[]' },
+		{ name: 'accounts', deps: 'accounts', out: 'address[]' },
 
-		{ name: 'balance', rpc: 'getBalance', params: ['account'], deps: 'h', out: 'N' },
-		{ name: 'code', rpc: 'getCode', params: ['account'], deps: 'h', out: 'd' },
-		{ name: 'nonce', rpc: 'getTransactionCount', params: ['account'], deps: 'h', out: 'n' },
-		{ name: 'storageAt', rpc: 'getStorageAt', params: ['account', 'h'], deps: 'h', out: 'N' },
+		{ name: 'balance', rpc: 'getBalance', params: ['address'], deps: 'h', out: 'N' },
+		{ name: 'code', rpc: 'getCode', params: ['address'], deps: 'h', out: 'd' },
+		{ name: 'nonce', rpc: 'getTransactionCount', params: ['address'], deps: 'h', out: 'n' },
+		{ name: 'storageAt', rpc: 'getStorageAt', params: ['address', 'h'], deps: 'h', out: 'N' },
 
 		{ name: 'syncing', deps: 'syncing', out: 'b' },
 		{ name: 'hashrate', deps: 'authoring', out: 'n' },
 		{ name: 'authoring', rpc: 'mining', deps: 'authoring', out: 'b' },
 		{ name: 'ethProtocolVersion', rpc: 'protocolVersion' },
-		{ name: 'gasPrice', deps: 'h', out: 'N' }
+		{ name: 'gasPrice', deps: 'h', out: 'N' },
+//		, { name: 'currentProvider', rpc: ['web3', 'currentProvider'] }
+
+		{ name: 'accountsInfo', rpc: ['parity', 'accountsInfo'], deps: 'accounts', out: 'accountsInfo' },
+		{ name: 'allAccountsInfo', rpc: ['parity', 'allAccountsInfo'], deps: 'accounts', out: 'accountsInfo' },
+
+		{ name: 'estimateGas', deps: 'h', params: ['tx'], cache: false }
 	];
 
 	bonds.time = new oo7.TimeBond;
 
-	if (!useSubs) {
-		// The regular ones.
-		apisInfo.forEach(api => {
-			declare(api.name, api.rpc, api.params,
-				bondifiedDeps(api.deps), subsFromValue(api.out),
-				prettifyValueFromRpcTransform(api.out));
-		});
+	// The regular ones.
+	apisInfo.forEach(api => {
+		declare(api.name, api.rpc, api.args, api.params,
+			bondifiedDeps(api.deps), subsFromValue(api.out),
+			prettifyValueFromRpcTransform(api.out),
+			typeof api.cache === 'boolean' ? api.cache : true
+		);
+	});
 
+	// Irregular ones that are same for pubsub and polling.
+	bonds.blockNumber = bonds.height;	// just a synonym.
+	bonds.defaultAccount = bonds.me = bonds.accounts[0];	// TODO: make this use its subscription
+	bonds.post = tx => new Transaction(tx);
+	bonds.sign = (message, from = bonds.me) => new Signature(message, from);
+
+	// Irregular ones that are different between pubsub/polling.
+	if (useSubs) {
+
+	} else {
 		// Some useful aliases
 		let onAccountsChanged = bonds.time; // TODO: more accurate notification
 		let onHardwareAccountsChanged = bonds.time; // TODO: more accurate notification
@@ -376,18 +453,11 @@ function createBonds(options) {
 		// The rest...
 
 		// eth_
-		bonds.blockNumber = bonds.height;	// just a synonym.
 		bonds.findBlock = (hashOrNumberBond => new TransformBond(hashOrNumber => isNumber(hashOrNumber)
 			? api().eth.getBlockByNumber(hashOrNumber)
 			: api().eth.getBlockByHash(hashOrNumber),
 			[hashOrNumberBond], [/*onReorg*/]).subscriptable());// TODO: chain reorg that includes number x, if x is a number
 		bonds.blocks = presub(bonds.findBlock);
-		bonds.defaultAccount = bonds.me = bonds.accounts[0];	// TODO: make this use its subscription
-		bonds.post = tx => new Transaction(tx);
-		bonds.sign = (message, from = bonds.me) => new Signature(message, from);
-
-		// not really cacheable.
-		bonds.estimateGas = (x => new TransformBond(x => api().eth.estimateGas(x), [x], [onHeadChanged, onPendingChanged]));
 
 		bonds.blockTransactionCount = (hashOrNumberBond => new TransformBond(
 			hashOrNumber => isNumber(hashOrNumber)
@@ -428,8 +498,6 @@ function createBonds(options) {
 		// parity_
 		bonds.hashContent = u => new TransformBond(x => api().parity.hashContent(x), [u], [], false);
 		bonds.gasPriceHistogram = new TransformBond(() => api().parity.gasPriceHistogram(), [], [onHeadChanged], undefined, undefined, caching('gasPriceHistogram')).subscriptable();
-		bonds.accountsInfo = new TransformBond(() => api().parity.accountsInfo(), [], [onAccountsChanged], undefined, undefined, caching('accountsInfo')).subscriptable(2);
-		bonds.allAccountsInfo = new TransformBond(() => api().parity.allAccountsInfo(), [], [onAccountsChanged], undefined, undefined, caching('allAccountsInfo')).subscriptable(2);
 		bonds.hardwareAccountsInfo = new TransformBond(() => api().parity.hardwareAccountsInfo(), [], [onHardwareAccountsChanged], undefined, undefined, caching('hardwareAccountsInfo')).subscriptable(2);
 		bonds.mode = new TransformBond(() => api().parity.mode(), [], [bonds.height], undefined, undefined, caching('mode'));
 
@@ -469,8 +537,10 @@ function createBonds(options) {
 		bonds.versionInfo = new TransformBond(() => api().parity.versionInfo(), [], [onAutoUpdateChanged]).subscriptable();
 		bonds.consensusCapability = new TransformBond(() => api().parity.consensusCapability(), [], [onAutoUpdateChanged]);
 		bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
+	}
 
-	} else {
+	/*
+	{
 		bonds.height = new TransformBond(_ => +_, [new SubscriptionBond('eth', 'blockNumber')]).subscriptable();
 
 		let onAutoUpdateChanged = bonds.height;
@@ -583,7 +653,7 @@ function createBonds(options) {
 		bonds.versionInfo = new SubscriptionBond('parity', 'versionInfo').subscriptable();
 		bonds.consensusCapability = new SubscriptionBond('parity', 'consensusCapability').subscriptable();
 		bonds.upgradeReady = new TransformBond(() => api().parity.upgradeReady(), [], [onAutoUpdateChanged]).subscriptable();
-	}
+	}*/
 
 	bonds.fromUuid = function (uuid) {
 		if (uuid.startsWith(options.prefix)) {
@@ -603,7 +673,6 @@ function createBonds(options) {
 					return null;
 				}
 				args = args.map((a, i) => deuuidify(types[i], a));
-				console.log('Function UUID', name, args);
 				// TODO: PROBABLY NOT SAFE. USE A WHITELIST.
 				if (typeof bonds[name] === 'function') {
 					let b = bonds[name].apply(bonds, args);
@@ -1077,7 +1146,7 @@ function cleanup (value, type = 'bytes32', api = parity.api) {
 
 module.exports = {
 	// Bonds stuff
-	abiPolyfill, options, bonds, Bonds, createBonds,
+	abiPolyfill, options, bonds, Bonds, createBonds, ParityApi,
 
 	// Util functions
 	asciiToHex, bytesToHex, hexToAscii, isAddressValid, toChecksumAddress, sha3,
