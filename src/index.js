@@ -29,7 +29,6 @@ function defaultProvider () {
 	if (typeof window !== 'undefined' && window.ethereum) {
 		console.log('Found nu-skool "ethereum" provider.');
 		let provider = window.ethereum;
-		provider.isParity = true;
 		return provider;
 	}
 
