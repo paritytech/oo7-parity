@@ -39,7 +39,7 @@ function defaultProvider () {
 		provider.on = (...args) => {
 			console.warn('Ignoring `on` function called with ', args);
 		};
-
+/*
 		// Workaround for broken @parity/api.
 		let sa = provider.sendAsync.bind(provider);
 		provider.sendAsync = (methodParams, callback) => sa(
@@ -55,7 +55,7 @@ function defaultProvider () {
 				console.log("JSONRPC:", method, params, reply.result);
 				return callback(error, reply.result);
 			}
-		);
+		);*/
 		return provider;
 	}
 
