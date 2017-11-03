@@ -72,11 +72,13 @@ function defaultProvider () {
 		console.log('Defaulting to Parity HTTP provider.');
 		provider = new ParityApi.Provider.Http('http://localhost:8545');
 	}
-	let old = provider.send;
-	provider.send = (method, params, callback) => old(method, params, (error, result) => {
-		console.log("JSONRPC:", method, params, result);
-		return callback(error, result);
-	});
+	if (typeof window !== 'undefined' && window.traceRpc) {
+		let old = provider.send;
+		provider.send = (method, params, callback) => old(method, params, (error, result) => {
+			console.log("JSONRPC:", method, params, result);
+			return callback(error, result);
+		});
+	}
 	return provider;
 }
 
