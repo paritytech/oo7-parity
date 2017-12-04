@@ -203,8 +203,8 @@ function createBonds(options) {
 			get (receiver, name) {
 				if (typeof(name) === 'string' || typeof(name) === 'number') {
 					return typeof(receiver[name]) !== 'undefined' ? receiver[name] : receiver(name);
-				} else if (typeof(name) === 'symbol' && oo7.Bond.knowSymbol(name)) {
-					return receiver(oo7.Bond.fromSymbol(name));
+				} else if (typeof(name) === 'symbol' && oo7.Bond._knowSymbol(name)) {
+					return receiver(oo7.Bond._fromSymbol(name));
 				} else {
 					throw new Error(`Weird value type to be subscripted by: ${typeof(name)}: ${JSON.stringify(name)}`);
 				}
